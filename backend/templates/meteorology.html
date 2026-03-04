@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>气象场管理 - 空气污染扩散模拟平台</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --success: #34C759;
+            --warning: #FF9500;
+            --error: #FF3B30;
+            --bg: #F5F5F7;
+            --card: #FFFFFF;
+            --text: #1D1D1F;
+            --text-secondary: #86868B;
+            --border: #D2D2D7;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .logo {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon { font-size: 28px; }
+        .logo-text { font-size: 16px; font-weight: 600; }
+        .nav { flex: 1; padding: 12px 0; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .nav-item:hover { background: var(--bg); }
+        .nav-item.active { 
+            background: rgba(0, 122, 255, 0.1); 
+            color: var(--primary);
+            border-right: 3px solid var(--primary);
+        }
+        .main { flex: 1; padding: 24px; display: flex; gap: 20px; }
+        .main-content { flex: 1; }
+        .side-panel { width: 350px; display: flex; flex-direction: column; gap: 16px; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header p { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            padding: 16px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #0066DD; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-default { background: var(--bg); color: var(--text); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--bg); }
+        td { font-size: 13px; }
+        tr:hover td { background: var(--bg); }
+        tr.selected td { background: rgba(0, 122, 255, 0.1); }
+        .actions { display: flex; gap: 8px; }
+        .wind-rose { width: 100%; height: 180px; position: relative; }
+        .wind-rose canvas { width: 100%; height: 100%; }
+        .wind-controls { display: flex; gap: 12px; margin-top: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-input:focus { outline: none; border-color: var(--primary); }
+        .stability-info { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+        .stability-item { display: flex; align-items: center; gap: 8px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-a { background: #FFEBEE; color: #C62828; }
+        .badge-b { background: #FFF3E0; color: #E65100; }
+        .badge-c { background: #E3F2FD; color: #1565C0; }
+        .badge-d { background: #F5F5F5; color: #616161; }
+        .badge-e { background: #E8F5E9; color: #2E7D32; }
+        .badge-f { background: #E8F5E9; color: #1B5E20; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: var(--card);
+            border-radius: 16px;
+            width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🌬️</span>
+                <span class="logo-text">污染扩散模拟</span>
+            </div>
+            <nav class="nav">
+                <a href="/" class="nav-item">📍 主界面</a>
+                <a href="/sources" class="nav-item">🏭 排放源管理</a>
+                <a href="/receptors" class="nav-item">📊 受体点管理</a>
+                <a href="/meteorology" class="nav-item active">🌤️ 气象场管理</a>
+            </nav>
+        </aside>
+        <main class="main">
+            <div class="main-content">
+                <div class="header">
+                    <div>
+                        <h1>气象场管理</h1>
+                        <p>管理和配置气象条件参数</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal()">+ 新增气象场</button>
+                </div>
+                <div class="card">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>名称</th>
+                                <th>风速</th>
+                                <th>风向</th>
+                                <th>稳定度</th>
+                                <th>边界层高度</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="side-panel">
+                <div class="card">
+                    <div class="card-title">风向风速控制</div>
+                    <div class="wind-rose">
+                        <canvas id="windCanvas"></canvas>
+                    </div>
+                    <div class="wind-controls">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label">风向 (°)</label>
+                            <input type="number" class="form-input" id="windDir" value="0" min="0" max="360">
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label">风速</label>
+                            <input type="number" class="form-input" id="windSpeed" value="2" min="0.1" max="20" step="0.1">
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">稳定度说明</div>
+                    <div class="stability-info">
+                        <div class="stability-item"><span class="badge badge-a">A</span> 极不稳定，强日照、弱风</div>
+                        <div class="stability-item"><span class="badge badge-b">B</span> 不稳定，中等日照</div>
+                        <div class="stability-item"><span class="badge badge-c">C</span> 弱不稳定，弱日照</div>
+                        <div class="stability-item"><span class="badge badge-d">D</span> 中性，阴天或夜间</div>
+                        <div class="stability-item"><span class="badge badge-e">E</span> 弱稳定，夜间弱风</div>
+                        <div class="stability-item"><span class="badge badge-f">F</span> 稳定，晴朗夜间</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">新增气象场</div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="form-group">
+                    <label class="form-label">名称 *</label>
+                    <input type="text" class="form-input" id="name" placeholder="请输入气象场名称">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">风速</label>
+                        <input type="number" class="form-input" id="wind_speed" value="2" min="0.1" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">风向 (°)</label>
+                        <input type="number" class="form-input" id="wind_direction" value="0" min="0" max="360">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">边界层高度</label>
+                        <input type="number" class="form-input" id="boundary_layer_height" value="1000">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">稳定度等级</label>
+                        <select class="select" id="stability_class">
+                            <option value="A">A - 极不稳定</option>
+                            <option value="B">B - 不稳定</option>
+                            <option value="C">C - 弱不稳定</option>
+                            <option value="D" selected>D - 中性</option>
+                            <option value="E">E - 弱稳定</option>
+                            <option value="F">F - 稳定</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">温度 (K)</label>
+                        <input type="number" class="form-input" id="temperature" value="293.15">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">湿度 (%)</label>
+                        <input type="number" class="form-input" id="humidity" value="50" min="0" max="100">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveMeteorology()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let meteorologies = [];
+        let selectedId = null;
+        let windDirection = 0, windSpeed = 2;
+        
+        async function loadMeteorologies() {
+            const res = await fetch('/api/meteorology/');
+            meteorologies = await res.json();
+            renderTable();
+            if (meteorologies.length > 0) {
+                selectMeteorology(meteorologies[0].id);
+            }
+        }
+        
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = meteorologies.map(m => `
+                <tr class="${m.id === selectedId ? 'selected' : ''}" onclick="selectMeteorology(${m.id})">
+                    <td>${m.id}</td>
+                    <td>${m.name}</td>
+                    <td>${m.wind_speed} m/s</td>
+                    <td>${m.wind_direction}°</td>
+                    <td><span class="badge badge-${m.stability_class.toLowerCase()}">${m.stability_class}</span></td>
+                    <td>${m.boundary_layer_height} m</td>
+                    <td class="actions">
+                        <button class="btn btn-sm btn-default" onclick="event.stopPropagation();editMeteorology(${m.id})">编辑</button>
+                        <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteMeteorology(${m.id})">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        function selectMeteorology(id) {
+            selectedId = id;
+            const m = meteorologies.find(x => x.id === id);
+            windDirection = m.wind_direction;
+            windSpeed = m.wind_speed;
+            document.getElementById('windDir').value = windDirection;
+            document.getElementById('windSpeed').value = windSpeed;
+            drawWindRose();
+            renderTable();
+        }
+        
+        function initWindRose() {
+            const canvas = document.getElementById('windCanvas');
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width/2;
+                const y = rect.height/2 - (e.clientY - rect.top);
+                windDirection = Math.round(Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+                windSpeed = Math.min(20, Math.max(0.5, Math.sqrt(x*x + y*y) / 4));
+                document.getElementById('windDir').value = windDirection;
+                document.getElementById('windSpeed').value = windSpeed.toFixed(1);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            document.getElementById('windDir').addEventListener('change', (e) => {
+                windDirection = parseInt(e.target.value);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            document.getElementById('windSpeed').addEventListener('change', (e) => {
+                windSpeed = parseFloat(e.target.value);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            drawWindRose();
+        }
+        
+        function drawWindRose() {
+            const canvas = document.getElementById('windCanvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.offsetWidth, h = canvas.offsetHeight;
+            const cx = w/2, cy = h/2, r = Math.min(w, h)/2 - 10;
+            
+            ctx.setTransform(2, 0, 0, 2, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 8; i++) {
+                const angle = i * Math.PI / 4;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + r * Math.sin(angle), cy - r * Math.cos(angle));
+                ctx.stroke();
+            }
+            for (let i = 1; i <= 4; i++) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r * i / 4, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            const labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            ctx.fillStyle = '#666';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            labels.forEach((label, i) => {
+                const angle = i * Math.PI / 4;
+                ctx.fillText(label, cx + (r + 12) * Math.sin(angle), cy - (r + 12) * Math.cos(angle) + 4);
+            });
+            
+            const angle = (90 - windDirection) * Math.PI / 180;
+            const len = windSpeed / 20 * r;
+            ctx.strokeStyle = '#007AFF';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + len * Math.cos(angle), cy - len * Math.sin(angle));
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#007AFF';
+            ctx.fill();
+        }
+        
+        async function updateMeteorology() {
+            if (!selectedId) return;
+            await fetch(`/api/meteorology/${selectedId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({wind_direction: windDirection, wind_speed: windSpeed})
+            });
+            loadMeteorologies();
+        }
+        
+        function openModal() {
+            document.getElementById('modalTitle').textContent = '新增气象场';
+            document.getElementById('editId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('wind_speed').value = 2;
+            document.getElementById('wind_direction').value = 0;
+            document.getElementById('boundary_layer_height').value = 1000;
+            document.getElementById('stability_class').value = 'D';
+            document.getElementById('temperature').value = 293.15;
+            document.getElementById('humidity').value = 50;
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function editMeteorology(id) {
+            const m = meteorologies.find(x => x.id === id);
+            document.getElementById('modalTitle').textContent = '编辑气象场';
+            document.getElementById('editId').value = id;
+            document.getElementById('name').value = m.name;
+            document.getElementById('wind_speed').value = m.wind_speed;
+            document.getElementById('wind_direction').value = m.wind_direction;
+            document.getElementById('boundary_layer_height').value = m.boundary_layer_height;
+            document.getElementById('stability_class').value = m.stability_class;
+            document.getElementById('temperature').value = m.temperature;
+            document.getElementById('humidity').value = m.humidity;
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
+        
+        async function saveMeteorology() {
+            const id = document.getElementById('editId').value;
+            const data = {
+                name: document.getElementById('name').value,
+                wind_speed: parseFloat(document.getElementById('wind_speed').value),
+                wind_direction: parseFloat(document.getElementById('wind_direction').value),
+                boundary_layer_height: parseFloat(document.getElementById('boundary_layer_height').value),
+                stability_class: document.getElementById('stability_class').value,
+                temperature: parseFloat(document.getElementById('temperature').value),
+                humidity: parseFloat(document.getElementById('humidity').value)
+            };
+            
+            try {
+                if (id) {
+                    await fetch(`/api/meteorology/${id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    await fetch('/api/meteorology/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                }
+                closeModal();
+                loadMeteorologies();
+            } catch (e) {
+                alert('保存失败');
+            }
+        }
+        
+        async function deleteMeteorology(id) {
+            if (!confirm('确定删除该气象场吗？')) return;
+            await fetch(`/api/meteorology/${id}`, {method: 'DELETE'});
+            loadMeteorologies();
+        }
+        
+        loadMeteorologies();
+        initWindRose();
+    </script>
+</body>
+</html>

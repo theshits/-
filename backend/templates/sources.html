@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排放源管理 - 空气污染扩散模拟平台</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --success: #34C759;
+            --warning: #FF9500;
+            --error: #FF3B30;
+            --bg: #F5F5F7;
+            --card: #FFFFFF;
+            --text: #1D1D1F;
+            --text-secondary: #86868B;
+            --border: #D2D2D7;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .logo {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon { font-size: 28px; }
+        .logo-text { font-size: 16px; font-weight: 600; }
+        .nav { flex: 1; padding: 12px 0; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .nav-item:hover { background: var(--bg); }
+        .nav-item.active { 
+            background: rgba(0, 122, 255, 0.1); 
+            color: var(--primary);
+            border-right: 3px solid var(--primary);
+        }
+        .main { flex: 1; padding: 24px; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header p { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            padding: 20px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #0066DD; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-default { background: var(--bg); color: var(--text); }
+        .btn-success { background: var(--success); color: white; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--bg); }
+        td { font-size: 14px; }
+        tr:hover td { background: var(--bg); }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin: 2px;
+        }
+        .badge-pm25 { background: #FFEBEE; color: #C62828; }
+        .badge-pm10 { background: #FFF3E0; color: #E65100; }
+        .badge-vocs { background: #E8F5E9; color: #2E7D32; }
+        .badge-so2 { background: #E3F2FD; color: #1565C0; }
+        .badge-no2 { background: #F3E5F5; color: #7B1FA2; }
+        .badge-co { background: #FCE4EC; color: #C2185B; }
+        .badge-success { background: rgba(52,199,89,0.15); color: var(--success); }
+        .badge-default { background: var(--bg); color: var(--text-secondary); }
+        
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            display: inline-block;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #34C759;
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: var(--card);
+            border-radius: 16px;
+            width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .form-input:focus { outline: none; border-color: var(--primary); }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .actions { display: flex; gap: 8px; }
+        
+        .pollutant-section {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .pollutant-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pollutant-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .pollutant-item {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .pollutant-item .select {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+        }
+        .pollutant-item .input {
+            width: 120px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .pollutant-item .btn-remove {
+            padding: 6px 10px;
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .marker-preview {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .marker-symbol-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .marker-symbol-option {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.2s;
+        }
+        .marker-symbol-option:hover {
+            border-color: var(--primary);
+        }
+        .marker-symbol-option.selected {
+            border-color: var(--primary);
+            background: rgba(0, 122, 255, 0.1);
+        }
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .color-picker-wrapper input[type="color"] {
+            width: 50px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .pollutant-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🌬️</span>
+                <span class="logo-text">污染扩散模拟</span>
+            </div>
+            <nav class="nav">
+                <a href="/" class="nav-item">📍 主界面</a>
+                <a href="/sources" class="nav-item active">🏭 排放源管理</a>
+                <a href="/receptors" class="nav-item">📊 受体点管理</a>
+                <a href="/meteorology" class="nav-item">🌤️ 气象场管理</a>
+            </nav>
+        </aside>
+        <main class="main">
+            <div class="header">
+                <div>
+                    <h1>排放源管理</h1>
+                    <p>管理和配置污染排放源信息，支持多种污染物</p>
+                </div>
+                <button class="btn btn-primary" onclick="openModal()">+ 新增排放源</button>
+            </div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>位置</th>
+                            <th>高度(m)</th>
+                            <th>污染物</th>
+                            <th>标记</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">新增排放源</div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                
+                <div class="form-group">
+                    <label class="form-label">名称 *</label>
+                    <input type="text" class="form-input" id="name" placeholder="请输入排放源名称">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">纬度 *</label>
+                        <input type="number" class="form-input" id="latitude" value="39.9" step="0.000001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">经度 *</label>
+                        <input type="number" class="form-input" id="longitude" value="116.4" step="0.000001">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">烟囱高度</label>
+                        <input type="number" class="form-input" id="height" value="50">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">烟囱直径</label>
+                        <input type="number" class="form-input" id="diameter" value="2" step="0.1">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">烟气温度 (K)</label>
+                        <input type="number" class="form-input" id="temperature" value="400">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">出口速度</label>
+                        <input type="number" class="form-input" id="velocity" value="15">
+                    </div>
+                </div>
+                
+                <div class="pollutant-section">
+                    <div class="pollutant-section-title">
+                        <span>污染物排放</span>
+                        <button class="btn btn-sm btn-success" onclick="addPollutantRow()">+ 新增物质</button>
+                    </div>
+                    <div class="pollutant-list" id="pollutantList">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">标记符号</label>
+                        <div class="marker-symbol-grid" id="symbolGrid"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">标记颜色</label>
+                        <div class="color-picker-wrapper">
+                            <input type="color" id="marker_color" value="#FF5722">
+                            <span id="colorValue">#FF5722</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveSource()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let sources = [];
+        let pollutantTypes = [];
+        let markerSymbols = [];
+        let selectedSymbol = 'factory';
+        
+        async function loadInitData() {
+            try {
+                const [typesRes, symbolsRes] = await Promise.all([
+                    fetch('/api/sources/pollutant-types/').then(r => {
+                        if (!r.ok) throw new Error('获取污染物类型失败');
+                        return r.json();
+                    }),
+                    fetch('/api/sources/marker-symbols/').then(r => {
+                        if (!r.ok) throw new Error('获取标记符号失败');
+                        return r.json();
+                    })
+                ]);
+                pollutantTypes = typesRes;
+                markerSymbols = symbolsRes;
+                renderSymbolGrid();
+                await loadSources();
+            } catch (e) {
+                console.error('初始化数据加载失败:', e);
+                alert('加载数据失败: ' + e.message);
+            }
+        }
+        
+        function renderSymbolGrid() {
+            const grid = document.getElementById('symbolGrid');
+            grid.innerHTML = markerSymbols.map(s => `
+                <div class="marker-symbol-option ${s.symbol === selectedSymbol ? 'selected' : ''}" 
+                     onclick="selectSymbol('${s.symbol}')"
+                     title="${s.name}">
+                    ${s.icon}
+                </div>
+            `).join('');
+        }
+        
+        function selectSymbol(symbol) {
+            selectedSymbol = symbol;
+            renderSymbolGrid();
+        }
+        
+        async function loadSources() {
+            const res = await fetch('/api/sources/');
+            sources = await res.json();
+            renderTable();
+        }
+        
+        function getPollutantBadgeClass(type) {
+            const classes = {
+                'PM2.5': 'badge-pm25',
+                'PM10': 'badge-pm10',
+                'VOCs': 'badge-vocs',
+                'SO2': 'badge-so2',
+                'NOx': 'badge-no2',
+                'CO': 'badge-co'
+            };
+            return classes[type] || 'badge-default';
+        }
+        
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = sources.map(s => {
+                const pollutantTags = s.pollutants && s.pollutants.length > 0 
+                    ? s.pollutants.map(p => `<span class="badge ${getPollutantBadgeClass(p.pollutant_type)}">${p.pollutant_type}: ${p.emission_rate} g/s</span>`).join('')
+                    : '<span style="color: var(--text-secondary);">无</span>';
+                
+                const symbol = markerSymbols.find(m => m.symbol === s.marker_symbol) || {icon: '📍'};
+                
+                return `
+                    <tr>
+                        <td>${s.id}</td>
+                        <td>${s.name}</td>
+                        <td>${s.latitude.toFixed(4)}, ${s.longitude.toFixed(4)}</td>
+                        <td>${s.height}</td>
+                        <td><div class="pollutant-tags">${pollutantTags}</div></td>
+                        <td><span style="font-size: 20px; color: ${s.marker_color};">${symbol.icon}</span></td>
+                        <td>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${s.is_active ? 'checked' : ''} onchange="toggleSourceStatus(${s.id}, ${s.is_active})">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                        <td class="actions">
+                            <button class="btn btn-sm btn-default" onclick="editSource(${s.id})">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteSource(${s.id})">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function addPollutantRow(type = '', rate = 0, unit = 'g/s') {
+            const list = document.getElementById('pollutantList');
+            const row = document.createElement('div');
+            row.className = 'pollutant-item';
+            row.innerHTML = `
+                <select class="select pollutant-type">
+                    <option value="">选择物质...</option>
+                    ${pollutantTypes.map(p => `<option value="${p.type}" ${p.type === type ? 'selected' : ''}>${p.name} (${p.description})</option>`).join('')}
+                </select>
+                <input type="number" class="input pollutant-rate" placeholder="排放速率" value="${rate}" step="0.01" style="width: 100px;">
+                <select class="select pollutant-unit" style="width: 90px;">
+                    <option value="g/s" ${unit === 'g/s' ? 'selected' : ''}>g/s</option>
+                    <option value="kg/h" ${unit === 'kg/h' ? 'selected' : ''}>kg/h</option>
+                    <option value="kg/day" ${unit === 'kg/day' ? 'selected' : ''}>kg/day</option>
+                    <option value="ton/year" ${unit === 'ton/year' ? 'selected' : ''}>ton/year</option>
+                </select>
+                <button class="btn-remove" onclick="this.parentElement.remove()">删除</button>
+            `;
+            list.appendChild(row);
+        }
+        
+        function openModal() {
+            document.getElementById('modalTitle').textContent = '新增排放源';
+            document.getElementById('editId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('latitude').value = 39.9;
+            document.getElementById('longitude').value = 116.4;
+            document.getElementById('height').value = 50;
+            document.getElementById('temperature').value = 400;
+            document.getElementById('velocity').value = 15;
+            document.getElementById('diameter').value = 2;
+            document.getElementById('marker_color').value = '#FF5722';
+            document.getElementById('colorValue').textContent = '#FF5722';
+            document.getElementById('pollutantList').innerHTML = '';
+            selectedSymbol = 'factory';
+            renderSymbolGrid();
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function editSource(id) {
+            const s = sources.find(x => x.id === id);
+            document.getElementById('modalTitle').textContent = '编辑排放源';
+            document.getElementById('editId').value = id;
+            document.getElementById('name').value = s.name;
+            document.getElementById('latitude').value = s.latitude;
+            document.getElementById('longitude').value = s.longitude;
+            document.getElementById('height').value = s.height;
+            document.getElementById('temperature').value = s.temperature;
+            document.getElementById('velocity').value = s.velocity;
+            document.getElementById('diameter').value = s.diameter;
+            document.getElementById('marker_color').value = s.marker_color;
+            document.getElementById('colorValue').textContent = s.marker_color;
+            
+            selectedSymbol = s.marker_symbol || 'factory';
+            renderSymbolGrid();
+            
+            document.getElementById('pollutantList').innerHTML = '';
+            if (s.pollutants && s.pollutants.length > 0) {
+                s.pollutants.forEach(p => {
+                    addPollutantRow(p.pollutant_type, p.emission_rate, 'g/s');
+                });
+            }
+            
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
+        
+        function getPollutants() {
+            const items = document.querySelectorAll('.pollutant-item');
+            const pollutants = [];
+            
+            const unitConversions = {
+                'g/s': 1,
+                'kg/h': 1000 / 3600,
+                'kg/day': 1000 / 86400,
+                'ton/year': 1000000 / (365.25 * 24 * 3600)
+            };
+            
+            items.forEach(item => {
+                const type = item.querySelector('.pollutant-type').value;
+                const rate = parseFloat(item.querySelector('.pollutant-rate').value) || 0;
+                const unit = item.querySelector('.pollutant-unit').value;
+                
+                if (type && rate > 0) {
+                    const rateInGramsPerSecond = rate * unitConversions[unit];
+                    pollutants.push({ 
+                        pollutant_type: type, 
+                        emission_rate: rateInGramsPerSecond,
+                        original_rate: rate,
+                        original_unit: unit
+                    });
+                }
+            });
+            return pollutants;
+        }
+        
+        async function saveSource() {
+            const id = document.getElementById('editId').value;
+            const data = {
+                name: document.getElementById('name').value,
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value),
+                height: parseFloat(document.getElementById('height').value),
+                temperature: parseFloat(document.getElementById('temperature').value),
+                velocity: parseFloat(document.getElementById('velocity').value),
+                diameter: parseFloat(document.getElementById('diameter').value),
+                marker_symbol: selectedSymbol,
+                marker_color: document.getElementById('marker_color').value,
+                pollutants: getPollutants(),
+                is_active: true
+            };
+            
+            if (!data.name) {
+                alert('请输入排放源名称');
+                return;
+            }
+            
+            try {
+                let res;
+                if (id) {
+                    res = await fetch(`/api/sources/${id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    res = await fetch('/api/sources/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                }
+                
+                if (!res.ok) {
+                    let errMsg = '保存失败';
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.detail || errMsg;
+                    } catch (e) {
+                        errMsg = await res.text() || errMsg;
+                    }
+                    throw new Error(errMsg);
+                }
+                
+                closeModal();
+                loadSources();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+                console.error('保存失败:', e);
+            }
+        }
+        
+        async function deleteSource(id) {
+            if (!confirm('确定删除该排放源吗？')) return;
+            await fetch(`/api/sources/${id}`, {method: 'DELETE'});
+            loadSources();
+        }
+        
+        async function toggleSourceStatus(id, currentStatus) {
+            const newStatus = !currentStatus;
+            await fetch(`/api/sources/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ is_active: newStatus })
+            });
+            loadSources();
+        }
+        
+        document.getElementById('marker_color').addEventListener('input', function(e) {
+            document.getElementById('colorValue').textContent = e.target.value;
+        });
+        
+        loadInitData();
+    </script>
+</body>
+</html>

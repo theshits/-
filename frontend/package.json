@@ -1,0 +1,29 @@
+{
+  "name": "air-pollution-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.5",
+    "pinia": "^2.1.7",
+    "axios": "^1.6.2",
+    "naive-ui": "^2.36.0",
+    "echarts": "^5.4.3",
+    "leaflet": "^1.9.4",
+    "@vueuse/core": "^10.7.0",
+    "@vicons/ionicons5": "^0.12.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.5.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10",
+    "vue-tsc": "^1.8.27",
+    "@types/leaflet": "^1.9.8"
+  }
+}

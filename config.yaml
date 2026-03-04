@@ -1,0 +1,35 @@
+model:
+  name: "GNN_NO2_Inversion"
+  hidden_dim: 128
+  num_layers: 3
+  dropout: 0.3
+  num_heads: 4
+
+data:
+  tropomi_path: "data/tropomi/"
+  ground_path: "data/ground/"
+  weather_path: "data/weather/"
+  time_resolution: "daily"
+  spatial_resolution: 0.1
+
+graph:
+  edge_type: "weather_transport"
+  k_neighbors: 8
+  max_distance: 50.0
+  wind_weight: true
+  temporal_window: 24
+
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  num_epochs: 200
+  early_stopping_patience: 20
+  weight_decay: 0.0001
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+evaluation:
+  metrics: ["rmse", "mae", "r2", "bias"]
+  save_predictions: true
+  visualization: true

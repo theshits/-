@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空气污染扩散模拟平台</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <style>
+        :root {
+            --primary: #007AFF;
+            --success: #34C759;
+            --warning: #FF9500;
+            --error: #FF3B30;
+            --bg: #F5F5F7;
+            --card: #FFFFFF;
+            --text: #1D1D1F;
+            --text-secondary: #86868B;
+            --border: #D2D2D7;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .layout {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 240px;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        .logo {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon { font-size: 28px; }
+        .logo-text { font-size: 16px; font-weight: 600; }
+        .nav { flex: 1; padding: 12px 0; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .nav-item:hover { background: var(--bg); }
+        .nav-item.active { 
+            background: rgba(0, 122, 255, 0.1); 
+            color: var(--primary);
+            border-right: 3px solid var(--primary);
+        }
+        .main { flex: 1; display: flex; flex-direction: column; position: relative; }
+        .header {
+            background: var(--card);
+            padding: 12px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .map-container { 
+            flex: 1; 
+            position: relative;
+        }
+        #map { width: 100%; height: 100%; }
+        .sidebar-panel {
+            position: absolute;
+            right: 16px;
+            top: 80px;
+            width: 320px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 1000;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            padding: 16px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #0066DD; }
+        .btn-secondary { background: var(--bg); color: var(--text); }
+        .btn-secondary:hover { background: #E8E8ED; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .form-input, .select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .form-input:focus, .select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .stat-item { text-align: center; padding: 12px; background: var(--bg); border-radius: 8px; }
+        .stat-value { font-size: 24px; font-weight: 600; color: var(--primary); }
+        .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .wind-rose { width: 100%; height: 160px; position: relative; }
+        .wind-rose canvas { width: 100%; height: 100%; }
+        .wind-controls { display: flex; gap: 12px; margin-top: 12px; }
+        .wind-controls .form-group { flex: 1; margin: 0; }
+        .contribution-list { max-height: 180px; overflow-y: auto; }
+        .contribution-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .contribution-bar {
+            height: 6px;
+            background: var(--bg);
+            border-radius: 3px;
+            flex: 1;
+            margin: 0 12px;
+        }
+        .contribution-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+        }
+        .legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 12px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .empty { text-align: center; color: var(--text-secondary); padding: 20px; font-size: 13px; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .badge-primary { background: rgba(0, 122, 255, 0.1); color: var(--primary); }
+        .badge-success { background: rgba(52, 199, 89, 0.1); color: var(--success); }
+        .badge-warning { background: rgba(255, 149, 0, 0.1); color: var(--warning); }
+        .polygon-info {
+            background: rgba(0, 122, 255, 0.05);
+            border: 1px solid rgba(0, 122, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+        }
+        .polygon-info h4 { font-size: 13px; margin-bottom: 8px; }
+        .polygon-info p { font-size: 12px; color: var(--text-secondary); margin: 4px 0; }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 20px;
+        }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .legend-scale {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .legend-scale-item {
+            flex: 1;
+            height: 12px;
+            font-size: 10px;
+            text-align: center;
+        }
+        .legend-gradient {
+            display: flex;
+            height: 16px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .slider-container {
+            margin-bottom: 12px;
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .slider-label span:first-child {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .slider-label span:last-child {
+            font-size: 12px;
+            color: var(--primary);
+            font-weight: 500;
+        }
+        .apple-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(to right, var(--primary), var(--primary));
+            background-size: 50% 100%;
+            background-repeat: no-repeat;
+            background-color: #e5e5e5;
+            outline: none;
+            cursor: pointer;
+        }
+        .apple-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.04);
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .apple-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.04);
+        }
+        .apple-slider::-webkit-slider-thumb:active {
+            transform: scale(0.95);
+        }
+        .apple-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.04);
+            cursor: pointer;
+            border: none;
+            transition: transform 0.15s ease;
+        }
+        .apple-slider::-moz-range-thumb:hover {
+            transform: scale(1.1);
+        }
+        .leaflet-container { background: #E8E8ED; }
+        .leaflet-popup-content-wrapper { border-radius: 12px; }
+        .leaflet-popup-content { margin: 12px 16px; }
+        .popup-title { font-weight: 600; margin-bottom: 8px; }
+        .popup-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+        .popup-label { color: var(--text-secondary); }
+        .pollutant-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            background: var(--bg);
+            border-radius: 4px;
+            font-size: 11px;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🌬️</span>
+                <span class="logo-text">污染扩散模拟</span>
+            </div>
+            <nav class="nav">
+                <a href="/" class="nav-item active">📍 主界面</a>
+                <a href="/sources" class="nav-item">🏭 排放源管理</a>
+                <a href="/receptors" class="nav-item">📊 受体点管理</a>
+                <a href="/meteorology" class="nav-item">🌤️ 气象场管理</a>
+            </nav>
+            <div style="padding: 12px; border-top: 1px solid var(--border);">
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>模拟范围</span>
+                        <span id="domainSizeValue">30 km</span>
+                    </div>
+                    <input type="range" id="domainSizeSlider" class="apple-slider" min="5" max="100" value="30" step="5" oninput="updateSliderValue('domainSize')">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>网格分辨率</span>
+                        <span id="gridResolutionValue">100 m</span>
+                    </div>
+                    <input type="range" id="gridResolutionSlider" class="apple-slider" min="50" max="500" value="100" step="25" oninput="updateSliderValue('gridResolution')">
+                </div>
+            </div>
+        </aside>
+        <main class="main">
+            <header class="header">
+                <div>
+                    <h1>空气污染扩散模拟平台</h1>
+                </div>
+                <div class="header-controls">
+                    <select id="mapLayerSelect" class="select" style="width: 120px;" onchange="switchMapLayer()">
+                        <option value="osm">高德街道</option>
+                        <option value="satellite">高德卫星</option>
+                        <option value="hybrid">卫星+标注</option>
+                        <option value="terrain">高德地形</option>
+                    </select>
+                    <select id="metSelect" class="select" style="width: 200px;">
+                        <option value="">选择气象场...</option>
+                    </select>
+                    <select id="pollutantSelect" class="select" style="width: 120px;">
+                        <option value="">全部污染物</option>
+                        <option value="PM2.5">PM2.5</option>
+                        <option value="PM10">PM10</option>
+                        <option value="VOCs">VOCs</option>
+                        <option value="SO2">SO2</option>
+                        <option value="NOx">NOx</option>
+                        <option value="CO">CO</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="runSimulation()">▶ 运行模拟</button>
+                    <button class="btn btn-secondary" onclick="clearResults()">🗑️ 清除结果</button>
+                </div>
+            </header>
+            <div class="map-container">
+                <div id="map"></div>
+                <div class="sidebar-panel">
+                    <div class="card">
+                        <div class="card-title">
+                            <span>绘制选择区域</span>
+                            <button class="btn btn-sm btn-primary" onclick="toggleDraw()">✏️ 绘制</button>
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                            在地图上绘制多边形区域，仅模拟区域内排放源的影响
+                        </p>
+                        <div id="polygonInfo" class="polygon-info" style="display: none;">
+                            <h4>✅ 已选择区域</h4>
+                            <p>区域内排放源: <span id="polygonSources">0</span> 个</p>
+                            <p>区域内受体点: <span id="polygonReceptors">0</span> 个</p>
+                            <button class="btn btn-sm btn-secondary" onclick="clearPolygon()" style="margin-top: 8px; width: 100%;">清除选择区域</button>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">气象控制</div>
+                        <div class="wind-rose">
+                            <canvas id="windCanvas"></canvas>
+                        </div>
+                        <div class="wind-controls">
+                            <div class="form-group">
+                                <label class="form-label">风向 (°)</label>
+                                <input type="number" id="windDir" class="form-input" value="0" min="0" max="360">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">风速 (m/s)</label>
+                                <input type="number" id="windSpeed" class="form-input" value="2" min="0.1" max="20" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">数据统计</div>
+                        <div class="stats">
+                            <div class="stat-item">
+                                <div class="stat-value" id="sourceCount">0</div>
+                                <div class="stat-label">排放源</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="receptorCount">0</div>
+                                <div class="stat-label">受体点</div>
+                            </div>
+                        </div>
+                        <div class="legend">
+                            <div class="legend-item">
+                                <div class="legend-dot" style="background: #FF5722;"></div>
+                                <span>排放源</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-dot" style="background: #2196F3;"></div>
+                                <span>受体点</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card" id="resultCard" style="display: none;">
+                        <div class="card-title">
+                            <span>模拟结果</span>
+                            <span class="badge badge-success">完成</span>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">显示污染物</label>
+                            <select id="displayPollutantSelect" class="select" style="width: 100%;" onchange="switchDisplayPollutant()">
+                                <option value="">全部污染物</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label class="form-label">色阶类型</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <select id="colorScaleSelect" class="select" style="flex: 1;" onchange="updateColorScale()">
+                                    <option value="blue">蓝色渐变</option>
+                                    <option value="red">红黄渐变</option>
+                                    <option value="green">绿色渐变</option>
+                                    <option value="purple">紫色渐变</option>
+                                    <option value="thermal">热力图</option>
+                                    <option value="rainbow">彩虹</option>
+                                    <option value="turbo">Turbo</option>
+                                    <option value="spectral_r">Spectral_r</option>
+                                    <option value="jet">Jet</option>
+                                </select>
+                                <button class="btn btn-sm btn-secondary" onclick="openColorSettings()" title="色阶设置">⚙️</button>
+                            </div>
+                        </div>
+                        <div id="colorSettingsPanel" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--bg); border-radius: 8px;">
+                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">浓度范围设置 (µg/m³)</div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">最小值</label>
+                                    <input type="number" id="concMin" class="form-input" value="0" min="0" step="0.1" onchange="applyColorSettings()">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">最大值</label>
+                                    <input type="number" id="concMax" class="form-input" value="100" min="0.1" step="0.1" onchange="applyColorSettings()">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button class="btn btn-sm btn-secondary" onclick="resetColorSettings()">重置</button>
+                                <button class="btn btn-sm btn-primary" onclick="closeColorSettings()">确定</button>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">浓度分布图例</p>
+                            <div class="legend-gradient" id="legendGradient">
+                                <div style="flex:1; background: #E3F2FD;"></div>
+                                <div style="flex:1; background: #90CAF9;"></div>
+                                <div style="flex:1; background: #42A5F5;"></div>
+                                <div style="flex:1; background: #1E88E5;"></div>
+                                <div style="flex:1; background: #1565C0;"></div>
+                                <div style="flex:1; background: #0D47A1;"></div>
+                            </div>
+                            <div class="legend-scale" id="legendScale">
+                                <span class="legend-scale-item" id="legendMin">0</span>
+                                <span class="legend-scale-item" style="flex: 3;"></span>
+                                <span class="legend-scale-item" id="legendMax">100</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">贡献度排名</div>
+                        <div id="contributions" class="contribution-list" style="max-height: 350px; overflow-y: auto;">
+                            <div class="empty">请运行模拟查看结果</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script>
+        let map, sourceMarkers = [], receptorMarkers = [], plumeLayer, shpLayer;
+        let drawnItems, drawControl, currentPolygon = null;
+        let windDirection = 0, windSpeed = 2;
+        let isDrawing = false;
+        let currentTileLayer = null;
+        let shpGeojson = null;
+        let overlayLayer = null;
+        let lastSimulationResult = null;
+        let customConcRange = null;
+        
+        const MARKER_SYMBOLS = {
+            factory: '🏭',
+            industry: '⚙️',
+            power: '⚡',
+            traffic: '🚗',
+            residential: '🏠',
+            monitor: '📡',
+            station: '📍',
+            sensor: '🔬',
+            alert: '⚠️',
+            info: 'ℹ️'
+        };
+        
+        const COLOR_SCALES = {
+            blue: {
+                colors: ['#E3F2FD', '#90CAF9', '#42A5F5', '#1E88E5', '#1565C0', '#0D47A1'],
+                name: '蓝色渐变'
+            },
+            red: {
+                colors: ['#FFF3E0', '#FFCC80', '#FF9800', '#F57C00', '#E65100', '#BF360C'],
+                name: '红黄渐变'
+            },
+            green: {
+                colors: ['#E8F5E9', '#A5D6A7', '#66BB6A', '#43A047', '#2E7D32', '#1B5E20'],
+                name: '绿色渐变'
+            },
+            purple: {
+                colors: ['#F3E5F5', '#CE93D8', '#AB47BC', '#8E24AA', '#6A1B9A', '#4A148C'],
+                name: '紫色渐变'
+            },
+            thermal: {
+                colors: ['#000080', '#0000FF', '#00FFFF', '#00FF00', '#FFFF00', '#FF0000'],
+                name: '热力图'
+            },
+            rainbow: {
+                colors: ['#9400D3', '#4B0082', '#0000FF', '#00FF00', '#FFFF00', '#FF7F00'],
+                name: '彩虹'
+            },
+            turbo: {
+                colors: ['#30123B', '#4662D7', '#35AAF8', '#1AE4B6', '#72FE5E', '#C8EF34', '#FABA39', '#F66B19', '#CA2A04', '#7A0403'],
+                name: 'Turbo'
+            },
+            spectral_r: {
+                colors: ['#9E0142', '#D53E4F', '#F46D43', '#FDAE61', '#FEE08B', '#FFFFBF', '#E6F598', '#ABDDA4', '#66C2A5', '#3288BD', '#5E4FA2'],
+                name: 'Spectral_r'
+            },
+            jet: {
+                colors: ['#0000FF', '#00FFFF', '#00FF00', '#FFFF00', '#FF7F00', '#FF0000'],
+                name: 'Jet'
+            }
+        };
+        
+        const TILE_LAYERS = {
+            osm: {
+                url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] }
+            },
+            satellite: {
+                url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+                options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] }
+            },
+            hybrid: {
+                url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
+                options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] },
+                overlay: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}'
+            },
+            terrain: {
+                url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}',
+                options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] }
+            }
+        };
+
+        async function init() {
+            await initMap();
+            restoreState();
+            await loadData();
+            initWindRose();
+            initDrawing();
+            initSliders();
+        }
+        
+        function saveState() {
+            if (!map) return;
+            const state = {
+                mapCenter: map.getCenter(),
+                mapZoom: map.getZoom(),
+                mapLayer: document.getElementById('mapLayerSelect').value,
+                colorScale: document.getElementById('colorScaleSelect').value,
+                customConcRange: customConcRange,
+                metId: document.getElementById('metSelect').value,
+                pollutantType: document.getElementById('pollutantSelect').value,
+                domainSize: document.getElementById('domainSizeSlider').value,
+                gridResolution: document.getElementById('gridResolutionSlider').value,
+                hasSimulation: lastSimulationResult !== null
+            };
+            localStorage.setItem('pollutionSimState', JSON.stringify(state));
+        }
+        
+        function restoreState() {
+            try {
+                const saved = localStorage.getItem('pollutionSimState');
+                if (!saved) return;
+                
+                const state = JSON.parse(saved);
+                
+                if (state.mapCenter && state.mapZoom) {
+                    map.off('moveend', saveState);
+                    map.off('zoomend', saveState);
+                    map.setView(state.mapCenter, state.mapZoom);
+                    map.on('moveend', saveState);
+                    map.on('zoomend', saveState);
+                }
+                
+                if (state.mapLayer) {
+                    document.getElementById('mapLayerSelect').value = state.mapLayer;
+                    switchMapLayer();
+                }
+                
+                if (state.colorScale) {
+                    document.getElementById('colorScaleSelect').value = state.colorScale;
+                }
+                
+                if (state.customConcRange) {
+                    customConcRange = state.customConcRange;
+                    document.getElementById('concMin').value = customConcRange.min;
+                    document.getElementById('concMax').value = customConcRange.max;
+                }
+                
+                if (state.metId) {
+                    document.getElementById('metSelect').value = state.metId;
+                }
+                
+                if (state.pollutantType) {
+                    document.getElementById('pollutantSelect').value = state.pollutantType;
+                }
+                
+                if (state.domainSize) {
+                    document.getElementById('domainSizeSlider').value = state.domainSize;
+                    updateSliderValue('domainSize');
+                }
+                
+                if (state.gridResolution) {
+                    document.getElementById('gridResolutionSlider').value = state.gridResolution;
+                    updateSliderValue('gridResolution');
+                }
+            } catch (e) {
+                console.error('Failed to restore state:', e);
+            }
+        }
+        
+        async function initMap() {
+            map = L.map('map', {
+                zoomControl: true,
+                attributionControl: false
+            });
+            
+            map.on('moveend', saveState);
+            map.on('zoomend', saveState);
+            
+            currentTileLayer = L.tileLayer(TILE_LAYERS.osm.url, TILE_LAYERS.osm.options).addTo(map);
+            
+            map.setView([35.0, 110.0], 5);
+            
+            const savedState = localStorage.getItem('pollutionSimState');
+            if (!savedState) {
+                try {
+                    const boundsRes = await fetch('/api/map/bounds');
+                    if (boundsRes.ok) {
+                        const bounds = await boundsRes.json();
+                        
+                        if (bounds.min_lat && bounds.max_lat && bounds.min_lon && bounds.max_lon) {
+                            map.fitBounds([
+                                [bounds.min_lat, bounds.min_lon],
+                                [bounds.max_lat, bounds.max_lon]
+                            ]);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load map bounds:', e);
+                }
+            }
+            
+            try {
+                const geojsonRes = await fetch('/api/map/geojson');
+                if (geojsonRes.ok) {
+                    const geojson = await geojsonRes.json();
+                    
+                    if (geojson.features && geojson.features.length > 0) {
+                        shpGeojson = geojson;
+                        shpLayer = L.geoJSON(geojson, {
+                            style: {
+                                color: '#666',
+                                weight: 1,
+                                fillColor: 'transparent',
+                                fillOpacity: 0,
+                                opacity: 0.7
+                            },
+                            onEachFeature: (feature, layer) => {
+                                if (feature.properties) {
+                                    const name = feature.properties.NAME || feature.properties.name || 
+                                               feature.properties.名称 || '未命名区域';
+                                    layer.bindPopup(`<div class="popup-title">${name}</div>`);
+                                }
+                            }
+                        }).addTo(map);
+                        console.log('SHP底图加载成功，共', geojson.features.length, '个要素');
+                    }
+                }
+            } catch (e) {
+                console.error('加载地图底图失败:', e);
+            }
+            
+            if (!map.getCenter()) {
+                map.setView([35.0, 110.0], 5);
+            }
+        }
+        
+        function switchMapLayer() {
+            const layerType = document.getElementById('mapLayerSelect').value;
+            
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+                currentTileLayer = null;
+            }
+            
+            if (overlayLayer) {
+                map.removeLayer(overlayLayer);
+                overlayLayer = null;
+            }
+            
+            if (shpLayer) {
+                map.removeLayer(shpLayer);
+                shpLayer = null;
+            }
+            
+            if (TILE_LAYERS[layerType]) {
+                currentTileLayer = L.tileLayer(TILE_LAYERS[layerType].url, TILE_LAYERS[layerType].options).addTo(map);
+                
+                if (layerType === 'hybrid' && TILE_LAYERS[layerType].overlay) {
+                    overlayLayer = L.tileLayer(TILE_LAYERS[layerType].overlay, { maxZoom: 18, subdomains: ['1', '2', '3', '4'] }).addTo(map);
+                }
+                
+                if (shpGeojson && shpGeojson.features && shpGeojson.features.length > 0) {
+                    shpLayer = L.geoJSON(shpGeojson, {
+                        style: {
+                            color: '#666',
+                            weight: 1,
+                            fillColor: 'transparent',
+                            fillOpacity: 0,
+                            opacity: 0.8
+                        },
+                        onEachFeature: (feature, layer) => {
+                            if (feature.properties) {
+                                const name = feature.properties.NAME || feature.properties.name || 
+                                           feature.properties.名称 || '未命名区域';
+                                layer.bindPopup(`<div class="popup-title">${name}</div>`);
+                            }
+                        }
+                    }).addTo(map);
+                }
+            }
+            
+            sourceMarkers.forEach(m => m.addTo(map));
+            receptorMarkers.forEach(m => m.addTo(map));
+            if (plumeLayer) plumeLayer.addTo(map);
+            if (drawnItems) drawnItems.addTo(map);
+            saveState();
+        }
+        
+        function initDrawing() {
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+            
+            drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polygon: {
+                        allowIntersection: false,
+                        shapeOptions: {
+                            color: '#007AFF',
+                            fillColor: '#007AFF',
+                            fillOpacity: 0.2,
+                            weight: 2
+                        }
+                    },
+                    polyline: false,
+                    rectangle: false,
+                    circle: false,
+                    circlemarker: false,
+                    marker: false
+                },
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                }
+            });
+            
+            map.on(L.Draw.Event.CREATED, function(e) {
+                drawnItems.clearLayers();
+                drawnItems.addLayer(e.layer);
+                currentPolygon = e.layer;
+                updatePolygonInfo();
+                isDrawing = false;
+            });
+            
+            map.on(L.Draw.Event.DELETED, function(e) {
+                currentPolygon = null;
+                updatePolygonInfo();
+            });
+        }
+        
+        function toggleDraw() {
+            if (isDrawing) return;
+            
+            const polygonDrawer = new L.Draw.Polygon(map, {
+                allowIntersection: false,
+                shapeOptions: {
+                    color: '#007AFF',
+                    fillColor: '#007AFF',
+                    fillOpacity: 0.2,
+                    weight: 2
+                }
+            });
+            polygonDrawer.enable();
+            isDrawing = true;
+        }
+        
+        function clearPolygon() {
+            drawnItems.clearLayers();
+            currentPolygon = null;
+            updatePolygonInfo();
+        }
+        
+        function updatePolygonInfo() {
+            const infoDiv = document.getElementById('polygonInfo');
+            
+            if (currentPolygon) {
+                const polygonCoords = currentPolygon.toGeoJSON().geometry.coordinates[0];
+                let sourceCount = 0;
+                let receptorCount = 0;
+                
+                sourceMarkers.forEach(m => {
+                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
+                        sourceCount++;
+                    }
+                });
+                
+                receptorMarkers.forEach(m => {
+                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
+                        receptorCount++;
+                    }
+                });
+                
+                document.getElementById('polygonSources').textContent = sourceCount;
+                document.getElementById('polygonReceptors').textContent = receptorCount;
+                infoDiv.style.display = 'block';
+            } else {
+                infoDiv.style.display = 'none';
+            }
+        }
+        
+        function isPointInPolygon(point, polygon) {
+            const x = point.lng;
+            const y = point.lat;
+            let inside = false;
+            
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i][0], yi = polygon[i][1];
+                const xj = polygon[j][0], yj = polygon[j][1];
+                
+                if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+                    inside = !inside;
+                }
+            }
+            
+            return inside;
+        }
+        
+        async function loadData() {
+            try {
+                const [sourcesRes, receptorsRes, metRes] = await Promise.all([
+                    fetch('/api/sources/').then(r => r.json()),
+                    fetch('/api/receptors/').then(r => r.json()),
+                    fetch('/api/meteorology/').then(r => r.json())
+                ]);
+                
+                updateMarkers(sourcesRes, receptorsRes);
+                updateMetSelect(metRes);
+                
+                document.getElementById('sourceCount').textContent = sourcesRes.filter(s => s.is_active).length;
+                document.getElementById('receptorCount').textContent = receptorsRes.filter(r => r.is_active).length;
+            } catch (e) {
+                console.error('加载数据失败:', e);
+            }
+        }
+        
+        function updateMarkers(sources, receptors) {
+            sourceMarkers.forEach(m => map.removeLayer(m));
+            receptorMarkers.forEach(m => map.removeLayer(m));
+            sourceMarkers = [];
+            receptorMarkers = [];
+            
+            sources.filter(s => s.is_active).forEach(s => {
+                const symbol = MARKER_SYMBOLS[s.marker_symbol] || '🏭';
+                const icon = L.divIcon({
+                    html: `<div style="
+                        background: ${s.marker_color};
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 50%;
+                        border: 3px solid white;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 14px;
+                    ">${symbol}</div>`,
+                    className: 'custom-marker',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
+                });
+                
+                let pollutantHtml = '';
+                if (s.pollutants && s.pollutants.length > 0) {
+                    pollutantHtml = s.pollutants.map(p => 
+                        `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
+                    ).join('');
+                }
+                
+                const marker = L.marker([s.latitude, s.longitude], {icon})
+                    .bindPopup(`
+                        <div class="popup-title">${s.name}</div>
+                        <div class="popup-row">
+                            <span class="popup-label">高度</span>
+                            <span>${s.height} m</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">烟气温度</span>
+                            <span>${s.temperature} K</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">排放速率</span>
+                            <span>${s.emission_rate} g/s</span>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            ${pollutantHtml}
+                        </div>
+                    `)
+                    .addTo(map);
+                marker.sourceId = s.id;
+                sourceMarkers.push(marker);
+            });
+            
+            receptors.filter(r => r.is_active).forEach(r => {
+                const symbol = MARKER_SYMBOLS[r.marker_symbol] || '📡';
+                const icon = L.divIcon({
+                    html: `<div style="
+                        background: ${r.marker_color};
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 4px;
+                        border: 2px solid white;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 12px;
+                    ">${symbol}</div>`,
+                    className: 'custom-marker',
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+                const marker = L.marker([r.latitude, r.longitude], {icon})
+                    .bindPopup(`
+                        <div class="popup-title">${r.name}</div>
+                        <div class="popup-row">
+                            <span class="popup-label">高度</span>
+                            <span>${r.height} m</span>
+                        </div>
+                    `)
+                    .addTo(map);
+                marker.receptorId = r.id;
+                receptorMarkers.push(marker);
+            });
+        }
+        
+        function updateMetSelect(meteorologies) {
+            const select = document.getElementById('metSelect');
+            select.innerHTML = '<option value="">选择气象场...</option>';
+            meteorologies.forEach(m => {
+                select.innerHTML += `<option value="${m.id}">${m.name} - 风速:${m.wind_speed}m/s</option>`;
+            });
+            if (meteorologies.length > 0) {
+                select.value = meteorologies[0].id;
+                windDirection = meteorologies[0].wind_direction;
+                windSpeed = meteorologies[0].wind_speed;
+                document.getElementById('windDir').value = windDirection;
+                document.getElementById('windSpeed').value = windSpeed;
+                drawWindRose();
+            }
+        }
+        
+        function initWindRose() {
+            const canvas = document.getElementById('windCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+            
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width/2;
+                const y = rect.height/2 - (e.clientY - rect.top);
+                windDirection = Math.round(Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+                windSpeed = Math.min(20, Math.max(0.5, Math.sqrt(x*x + y*y) / 4));
+                document.getElementById('windDir').value = windDirection;
+                document.getElementById('windSpeed').value = windSpeed.toFixed(1);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            document.getElementById('windDir').addEventListener('change', (e) => {
+                windDirection = parseInt(e.target.value);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            document.getElementById('windSpeed').addEventListener('change', (e) => {
+                windSpeed = parseFloat(e.target.value);
+                drawWindRose();
+                updateMeteorology();
+            });
+            
+            drawWindRose();
+        }
+        
+        function drawWindRose() {
+            const canvas = document.getElementById('windCanvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.offsetWidth, h = canvas.offsetHeight;
+            const cx = w/2, cy = h/2, r = Math.min(w, h)/2 - 10;
+            
+            ctx.clearRect(0, 0, w, h);
+            
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 8; i++) {
+                const angle = i * Math.PI / 4;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + r * Math.sin(angle), cy - r * Math.cos(angle));
+                ctx.stroke();
+            }
+            
+            for (let i = 1; i <= 4; i++) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, r * i / 4, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            const labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            ctx.fillStyle = '#666';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            labels.forEach((label, i) => {
+                const angle = i * Math.PI / 4;
+                const x = cx + (r + 12) * Math.sin(angle);
+                const y = cy - (r + 12) * Math.cos(angle) + 4;
+                ctx.fillText(label, x, y);
+            });
+            
+            const angle = (90 - windDirection) * Math.PI / 180;
+            const len = windSpeed / 20 * r;
+            ctx.strokeStyle = '#007AFF';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + len * Math.cos(angle), cy - len * Math.sin(angle));
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+            ctx.fillStyle = '#007AFF';
+            ctx.fill();
+        }
+        
+        async function updateMeteorology() {
+            const metId = document.getElementById('metSelect').value;
+            if (!metId) return;
+            
+            try {
+                await fetch(`/api/meteorology/${metId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        wind_direction: windDirection,
+                        wind_speed: windSpeed
+                    })
+                });
+            } catch (e) {
+                console.error('更新气象场失败:', e);
+            }
+        }
+        
+        async function runSimulation() {
+            const metId = document.getElementById('metSelect').value;
+            if (!metId) {
+                alert('请先选择气象场');
+                return;
+            }
+            
+            let sourceIds = null;
+            let receptorIds = null;
+            
+            if (currentPolygon) {
+                const polygonCoords = currentPolygon.toGeoJSON().geometry.coordinates[0];
+                sourceIds = [];
+                receptorIds = [];
+                
+                sourceMarkers.forEach(m => {
+                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
+                        sourceIds.push(m.sourceId);
+                    }
+                });
+                
+                receptorMarkers.forEach(m => {
+                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
+                        receptorIds.push(m.receptorId);
+                    }
+                });
+                
+                if (sourceIds.length === 0) {
+                    alert('选择区域内没有排放源');
+                    return;
+                }
+            }
+            
+            const pollutantType = document.getElementById('pollutantSelect').value || null;
+            
+            try {
+                document.getElementById('contributions').innerHTML = '<div class="loading"><div class="spinner"></div>正在模拟...</div>';
+                
+                const res = await fetch('/api/simulation/run', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        meteorology_id: parseInt(metId),
+                        source_ids: sourceIds,
+                        receptor_ids: receptorIds,
+                        pollutant_type: pollutantType,
+                        grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
+                        domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000
+                    })
+                });
+                
+                if (!res.ok) {
+                    let errMsg = '模拟请求失败';
+                    try {
+                        const errData = await res.json();
+                        errMsg = errData.detail || errMsg;
+                    } catch (e) {
+                        errMsg = await res.text() || errMsg;
+                    }
+                    throw new Error(errMsg);
+                }
+                
+                const result = await res.json();
+                lastSimulationResult = result;
+                
+                const pollutantSelect = document.getElementById('displayPollutantSelect');
+                pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
+                if (result.available_pollutants && result.available_pollutants.length > 0) {
+                    result.available_pollutants.forEach(p => {
+                        const option = document.createElement('option');
+                        option.value = p;
+                        option.textContent = p;
+                        pollutantSelect.appendChild(option);
+                    });
+                }
+                
+                visualizePlume(result);
+                updateContributions(result.contributions, result.receptor_contributions);
+                document.getElementById('resultCard').style.display = 'block';
+                saveState();
+            } catch (e) {
+                console.error('模拟失败:', e);
+                alert('模拟失败: ' + e.message);
+                document.getElementById('contributions').innerHTML = '<div class="empty">模拟失败: ' + e.message + '</div>';
+            }
+        }
+        
+        function visualizePlume(result) {
+            lastSimulationResult = result;
+            if (plumeLayer) map.removeLayer(plumeLayer);
+            
+            const {concentrations, grid_lat, grid_lon} = result;
+            const dataMaxConc = Math.max(...concentrations.flat());
+            
+            if (dataMaxConc <= 0) {
+                console.log('No valid concentration data to display');
+                return;
+            }
+            
+            let displayMinConc = 0;
+            let displayMaxConc = dataMaxConc;
+            
+            if (customConcRange && customConcRange.max > customConcRange.min) {
+                displayMinConc = customConcRange.min;
+                displayMaxConc = customConcRange.max;
+            }
+            
+            const minThreshold = dataMaxConc * 0.001;
+            
+            const scaleType = document.getElementById('colorScaleSelect').value;
+            const colors = COLOR_SCALES[scaleType].colors;
+            const numLevels = colors.length;
+            
+            const maxDisplayGrids = 150;
+            const gridSize = grid_lat.length;
+            const step = Math.max(1, Math.ceil(gridSize / maxDisplayGrids));
+            
+            const layers = [];
+            let processedCount = 0;
+            const maxLayers = 40000;
+            
+            for (let lat = 0; lat < grid_lat.length - 1 && processedCount < maxLayers; lat += step) {
+                for (let lon = 0; lon < grid_lon.length - 1 && processedCount < maxLayers; lon += step) {
+                    let sumConc = 0;
+                    let count = 0;
+                    
+                    const latEnd = Math.min(lat + step, grid_lat.length - 1);
+                    const lonEnd = Math.min(lon + step, grid_lon.length - 1);
+                    
+                    for (let dl = 0; dl < step && lat + dl < grid_lat.length - 1; dl++) {
+                        for (let dn = 0; dn < step && lon + dn < grid_lon.length - 1; dn++) {
+                            const c00 = concentrations[lat + dl][lon + dn];
+                            const c10 = concentrations[lat + dl + 1][lon + dn];
+                            const c01 = concentrations[lat + dl][lon + dn + 1];
+                            const c11 = concentrations[lat + dl + 1][lon + dn + 1];
+                            if (isFinite(c00) && isFinite(c10) && isFinite(c01) && isFinite(c11)) {
+                                sumConc += (c00 + c10 + c01 + c11) / 4;
+                                count++;
+                            }
+                        }
+                    }
+                    
+                    if (count === 0) continue;
+                    const avgConc = sumConc / count;
+                    
+                    if (avgConc <= minThreshold) continue;
+                    
+                    let normalizedValue = (avgConc - displayMinConc) / (displayMaxConc - displayMinConc);
+                    normalizedValue = Math.max(0, Math.min(1, normalizedValue));
+                    
+                    const colorIndex = Math.min(Math.floor(normalizedValue * numLevels), numLevels - 1);
+                    
+                    const polygon = L.polygon([
+                        [grid_lat[lat], grid_lon[lon]],
+                        [grid_lat[latEnd], grid_lon[lon]],
+                        [grid_lat[latEnd], grid_lon[lonEnd]],
+                        [grid_lat[lat], grid_lon[lonEnd]]
+                    ], {
+                        color: colors[colorIndex],
+                        fillColor: colors[colorIndex],
+                        fillOpacity: 0.5,
+                        weight: 0,
+                        stroke: false
+                    });
+                    layers.push(polygon);
+                    processedCount++;
+                }
+            }
+            
+            if (layers.length === 0) {
+                console.log('No layers to display, dataMax:', dataMaxConc, 'displayRange:', displayMinConc, '-', displayMaxConc);
+            } else {
+                console.log('Rendered', layers.length, 'polygons, step:', step, 'gridSize:', gridSize);
+            }
+            
+            plumeLayer = L.layerGroup(layers);
+            plumeLayer.addTo(map);
+            updateLegendGradient(scaleType);
+            updateLegendScale(displayMinConc, displayMaxConc);
+        }
+        
+        function updateLegendScale(minVal, maxVal) {
+            const formatValue = (val) => {
+                if (val === 0) return '0';
+                const absVal = Math.abs(val);
+                if (absVal >= 1000 || absVal < 0.01) {
+                    return val.toExponential(2);
+                } else if (absVal >= 1) {
+                    return val.toFixed(1);
+                } else {
+                    return val.toPrecision(2);
+                }
+            };
+            document.getElementById('legendMin').textContent = formatValue(minVal);
+            document.getElementById('legendMax').textContent = formatValue(maxVal);
+        }
+        
+        function updateColorScale() {
+            const scaleType = document.getElementById('colorScaleSelect').value;
+            updateLegendGradient(scaleType);
+            saveState();
+            
+            if (lastSimulationResult) {
+                visualizePlume(lastSimulationResult);
+            }
+        }
+        
+        function switchDisplayPollutant() {
+            if (!lastSimulationResult) return;
+            
+            const selectedPollutant = document.getElementById('displayPollutantSelect').value;
+            
+            if (selectedPollutant && lastSimulationResult.pollutant_concentrations && lastSimulationResult.pollutant_concentrations[selectedPollutant]) {
+                const pollutantResult = {
+                    ...lastSimulationResult,
+                    concentrations: lastSimulationResult.pollutant_concentrations[selectedPollutant]
+                };
+                visualizePlume(pollutantResult);
+            } else {
+                visualizePlume(lastSimulationResult);
+            }
+        }
+        
+        function updateLegendGradient(scaleType) {
+            const colors = COLOR_SCALES[scaleType].colors;
+            const gradient = document.getElementById('legendGradient');
+            gradient.innerHTML = colors.map(c => `<div style="flex:1; background: ${c};"></div>`).join('');
+        }
+        
+        function openColorSettings() {
+            document.getElementById('colorSettingsPanel').style.display = 'block';
+        }
+        
+        function closeColorSettings() {
+            document.getElementById('colorSettingsPanel').style.display = 'none';
+        }
+        
+        function applyColorSettings() {
+            const minVal = parseFloat(document.getElementById('concMin').value) || 0;
+            const maxVal = parseFloat(document.getElementById('concMax').value) || 100;
+            
+            if (maxVal <= minVal) {
+                alert('最大值必须大于最小值');
+                return;
+            }
+            
+            customConcRange = { min: minVal, max: maxVal };
+            
+            if (lastSimulationResult) {
+                visualizePlume(lastSimulationResult);
+            }
+        }
+        
+        function resetColorSettings() {
+            customConcRange = null;
+            document.getElementById('concMin').value = 0;
+            document.getElementById('concMax').value = 100;
+            
+            if (lastSimulationResult) {
+                visualizePlume(lastSimulationResult);
+            }
+        }
+        
+        function updateContributions(contributions, receptorContributions) {
+            const container = document.getElementById('contributions');
+            
+            const formatConc = (val) => {
+                if (val === 0) return '0';
+                const absVal = Math.abs(val);
+                if (absVal >= 1000 || absVal < 0.01) {
+                    return val.toExponential(2);
+                } else if (absVal >= 1) {
+                    return val.toFixed(1);
+                } else {
+                    return val.toPrecision(2);
+                }
+            };
+            
+            let html = '';
+            
+            if (receptorContributions && Object.keys(receptorContributions).length > 0) {
+                html += '<div style="margin-bottom: 16px;">';
+                html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">📍 受体点贡献分析</div>';
+                
+                for (const [receptorName, pollutantData] of Object.entries(receptorContributions)) {
+                    html += `<div style="margin-bottom: 12px; padding: 10px; background: var(--bg); border-radius: 8px;">`;
+                    html += `<div style="font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 6px;">${receptorName}</div>`;
+                    
+                    if (pollutantData && Object.keys(pollutantData).length > 0) {
+                        for (const [pollutant, sources] of Object.entries(pollutantData)) {
+                            html += `<div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border);">`;
+                            html += `<div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 3px;">${pollutant}</div>`;
+                            
+                            if (sources && sources.length > 0) {
+                                const maxConc = Math.max(...sources.map(s => s.concentration || 0));
+                                sources.slice(0, 5).forEach(s => {
+                                    const pct = s.percentage || 0;
+                                    const barWidth = maxConc > 0 ? (s.concentration / maxConc * 100) : 0;
+                                    html += `
+                                        <div class="contribution-item" style="padding: 2px 0;">
+                                            <span style="width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">${s.source_name}</span>
+                                            <div class="contribution-bar" style="flex:1; margin: 0 6px;">
+                                                <div class="contribution-fill" style="width:${barWidth}%"></div>
+                                            </div>
+                                            <span style="width:70px;text-align:right;font-size:10px;">${pct.toFixed(1)}% | ${formatConc(s.concentration || 0)}</span>
+                                        </div>
+                                    `;
+                                });
+                            }
+                            html += '</div>';
+                        }
+                    } else {
+                        html += '<div style="font-size: 11px; color: var(--text-secondary);">无数据</div>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+            
+            if (contributions && contributions.length > 0) {
+                html += '<div>';
+                html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">🏭 总体贡献排名</div>';
+                const maxPct = Math.max(...contributions.map(c => c.percentage || 0));
+                contributions.slice(0, 8).forEach(c => {
+                    const pollutantTags = (c.pollutants || []).map(p => `<span style="font-size:9px;background:var(--primary);color:white;padding:1px 4px;border-radius:3px;margin-left:4px;">${p}</span>`).join('');
+                    html += `
+                        <div class="contribution-item">
+                            <span style="width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${c.source_name}${pollutantTags}</span>
+                            <div class="contribution-bar">
+                                <div class="contribution-fill" style="width:${(c.percentage || 0)/maxPct*100}%"></div>
+                            </div>
+                            <span style="width:50px;text-align:right;font-size:12px;">${(c.percentage || 0).toFixed(1)}%</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            if (!html) {
+                container.innerHTML = '<div class="empty">暂无贡献度数据</div>';
+            } else {
+                container.innerHTML = html;
+            }
+        }
+        
+        function clearResults() {
+            if (plumeLayer) map.removeLayer(plumeLayer);
+            plumeLayer = null;
+            lastSimulationResult = null;
+            document.getElementById('resultCard').style.display = 'none';
+            document.getElementById('contributions').innerHTML = '<div class="empty">请运行模拟查看结果</div>';
+            saveState();
+        }
+        
+        function updateSliderValue(type) {
+            if (type === 'domainSize') {
+                const slider = document.getElementById('domainSizeSlider');
+                const value = slider.value;
+                document.getElementById('domainSizeValue').textContent = value + ' km';
+                updateSliderTrack(slider);
+            } else if (type === 'gridResolution') {
+                const slider = document.getElementById('gridResolutionSlider');
+                const value = slider.value;
+                document.getElementById('gridResolutionValue').textContent = value + ' m';
+                updateSliderTrack(slider);
+            }
+        }
+        
+        function updateSliderTrack(slider) {
+            const min = parseFloat(slider.min);
+            const max = parseFloat(slider.max);
+            const value = parseFloat(slider.value);
+            const percentage = ((value - min) / (max - min)) * 100;
+            slider.style.backgroundSize = percentage + '% 100%';
+        }
+        
+        function initSliders() {
+            const domainSlider = document.getElementById('domainSizeSlider');
+            const gridSlider = document.getElementById('gridResolutionSlider');
+            updateSliderTrack(domainSlider);
+            updateSliderTrack(gridSlider);
+        }
+        
+        init();
+    </script>
+</body>
+</html>

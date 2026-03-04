@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>受体点管理 - 空气污染扩散模拟平台</title>
+    <style>
+        :root {
+            --primary: #007AFF;
+            --success: #34C759;
+            --error: #FF3B30;
+            --bg: #F5F5F7;
+            --card: #FFFFFF;
+            --text: #1D1D1F;
+            --text-secondary: #86868B;
+            --border: #D2D2D7;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 220px;
+            background: var(--card);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .logo {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logo-icon { font-size: 28px; }
+        .logo-text { font-size: 16px; font-weight: 600; }
+        .nav { flex: 1; padding: 12px 0; }
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .nav-item:hover { background: var(--bg); }
+        .nav-item.active { 
+            background: rgba(0, 122, 255, 0.1); 
+            color: var(--primary);
+            border-right: 3px solid var(--primary);
+        }
+        .main { flex: 1; padding: 24px; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header p { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            padding: 20px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #0066DD; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-default { background: var(--bg); color: var(--text); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--bg); }
+        td { font-size: 14px; }
+        tr:hover td { background: var(--bg); }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-success { background: rgba(52,199,89,0.15); color: var(--success); }
+        .badge-default { background: var(--bg); color: var(--text-secondary); }
+        
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            display: inline-block;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #34C759;
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: var(--card);
+            border-radius: 16px;
+            width: 500px;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .form-input:focus { outline: none; border-color: var(--primary); }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+        .actions { display: flex; gap: 8px; }
+        .marker-symbol-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .marker-symbol-option {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            transition: all 0.2s;
+        }
+        .marker-symbol-option:hover {
+            border-color: var(--primary);
+        }
+        .marker-symbol-option.selected {
+            border-color: var(--primary);
+            background: rgba(0, 122, 255, 0.1);
+        }
+        .color-picker-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .color-picker-wrapper input[type="color"] {
+            width: 50px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="logo">
+                <span class="logo-icon">🌬️</span>
+                <span class="logo-text">污染扩散模拟</span>
+            </div>
+            <nav class="nav">
+                <a href="/" class="nav-item">📍 主界面</a>
+                <a href="/sources" class="nav-item">🏭 排放源管理</a>
+                <a href="/receptors" class="nav-item active">📊 受体点管理</a>
+                <a href="/meteorology" class="nav-item">🌤️ 气象场管理</a>
+            </nav>
+        </aside>
+        <main class="main">
+            <div class="header">
+                <div>
+                    <h1>受体点管理</h1>
+                    <p>管理和配置监测站点/受体点信息</p>
+                </div>
+                <button class="btn btn-primary" onclick="openModal()">+ 新增受体点</button>
+            </div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>位置</th>
+                            <th>高度(m)</th>
+                            <th>标记</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">新增受体点</div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="form-group">
+                    <label class="form-label">名称 *</label>
+                    <input type="text" class="form-input" id="name" placeholder="请输入受体点名称">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">纬度 *</label>
+                        <input type="number" class="form-input" id="latitude" value="39.9" step="0.000001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">经度 *</label>
+                        <input type="number" class="form-input" id="longitude" value="116.4" step="0.000001">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">高度 (m)</label>
+                    <input type="number" class="form-input" id="height" value="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">标记符号</label>
+                    <div class="marker-symbol-grid" id="symbolGrid"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">标记颜色</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="marker_color" value="#2196F3">
+                        <span id="colorValue">#2196F3</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveReceptor()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let receptors = [];
+        let markerSymbols = [];
+        let selectedSymbol = 'monitor';
+        
+        const RECEPTOR_SYMBOLS = {
+            monitor: {'name': '监测站', 'icon': '📡'},
+            station: {'name': '站点', 'icon': '📍'},
+            sensor: {'name': '传感器', 'icon': '🔬'},
+            alert: {'name': '警报', 'icon': '⚠️'},
+            info: {'name': '信息', 'icon': 'ℹ️'},
+            circle: {'name': '圆形', 'icon': '●'},
+            square: {'name': '方形', 'icon': '■'},
+            triangle: {'name': '三角形', 'icon': '▲'},
+            diamond: {'name': '菱形', 'icon': '◆'},
+            star: {'name': '星形', 'icon': '★'},
+        };
+        
+        async function loadInitData() {
+            try {
+                const res = await fetch('/api/sources/marker-symbols/');
+                markerSymbols = await res.json();
+            } catch (e) {
+                console.log('Using default symbols');
+            }
+            renderSymbolGrid();
+            await loadReceptors();
+        }
+        
+        function renderSymbolGrid() {
+            const grid = document.getElementById('symbolGrid');
+            grid.innerHTML = Object.entries(RECEPTOR_SYMBOLS).map(([key, val]) => `
+                <div class="marker-symbol-option ${key === selectedSymbol ? 'selected' : ''}" 
+                     onclick="selectSymbol('${key}')"
+                     title="${val.name}">
+                    ${val.icon}
+                </div>
+            `).join('');
+        }
+        
+        function selectSymbol(symbol) {
+            selectedSymbol = symbol;
+            renderSymbolGrid();
+        }
+        
+        async function loadReceptors() {
+            const res = await fetch('/api/receptors/');
+            receptors = await res.json();
+            renderTable();
+        }
+        
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = receptors.map(r => {
+                const symbol = RECEPTOR_SYMBOLS[r.marker_symbol] || RECEPTOR_SYMBOLS['monitor'];
+                return `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td>${r.name}</td>
+                        <td>${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}</td>
+                        <td>${r.height}</td>
+                        <td><span style="font-size: 20px; color: ${r.marker_color};">${symbol.icon}</span></td>
+                        <td>
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${r.is_active ? 'checked' : ''} onchange="toggleReceptorStatus(${r.id}, ${r.is_active})">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                        <td class="actions">
+                            <button class="btn btn-sm btn-default" onclick="editReceptor(${r.id})">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReceptor(${r.id})">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function openModal() {
+            document.getElementById('modalTitle').textContent = '新增受体点';
+            document.getElementById('editId').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('latitude').value = 39.9;
+            document.getElementById('longitude').value = 116.4;
+            document.getElementById('height').value = 0;
+            document.getElementById('marker_color').value = '#2196F3';
+            document.getElementById('colorValue').textContent = '#2196F3';
+            selectedSymbol = 'monitor';
+            renderSymbolGrid();
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function editReceptor(id) {
+            const r = receptors.find(x => x.id === id);
+            document.getElementById('modalTitle').textContent = '编辑受体点';
+            document.getElementById('editId').value = id;
+            document.getElementById('name').value = r.name;
+            document.getElementById('latitude').value = r.latitude;
+            document.getElementById('longitude').value = r.longitude;
+            document.getElementById('height').value = r.height;
+            document.getElementById('marker_color').value = r.marker_color;
+            document.getElementById('colorValue').textContent = r.marker_color;
+            selectedSymbol = r.marker_symbol || 'monitor';
+            renderSymbolGrid();
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
+        
+        async function saveReceptor() {
+            const id = document.getElementById('editId').value;
+            const data = {
+                name: document.getElementById('name').value,
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value),
+                height: parseFloat(document.getElementById('height').value),
+                marker_symbol: selectedSymbol,
+                marker_color: document.getElementById('marker_color').value,
+                is_active: true
+            };
+            
+            try {
+                let res;
+                if (id) {
+                    res = await fetch(`/api/receptors/${id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                } else {
+                    res = await fetch('/api/receptors/', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(data)
+                    });
+                }
+                
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || '保存失败');
+                }
+                
+                closeModal();
+                loadReceptors();
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            }
+        }
+        
+        async function deleteReceptor(id) {
+            if (!confirm('确定删除该受体点吗？')) return;
+            await fetch(`/api/receptors/${id}`, {method: 'DELETE'});
+            loadReceptors();
+        }
+        
+        async function toggleReceptorStatus(id, currentStatus) {
+            const newStatus = !currentStatus;
+            await fetch(`/api/receptors/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ is_active: newStatus })
+            });
+            loadReceptors();
+        }
+        
+        document.getElementById('marker_color').addEventListener('input', function(e) {
+            document.getElementById('colorValue').textContent = e.target.value;
+        });
+        
+        loadInitData();
+    </script>
+</body>
+</html>
