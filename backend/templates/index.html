@@ -1262,7 +1262,7 @@
                 displayMaxConc = customConcRange.max;
             }
             
-            const minThreshold = dataMaxConc * 0.001;
+            const minThreshold = displayMinConc > 0 ? displayMinConc * 0.01 : displayMaxConc * 0.00001;
             
             const scaleType = document.getElementById('colorScaleSelect').value;
             const colors = COLOR_SCALES[scaleType].colors;
@@ -1302,17 +1302,24 @@
                     
                     if (avgConc <= minThreshold) continue;
                     
-                    let normalizedValue = (avgConc - displayMinConc) / (displayMaxConc - displayMinConc);
+                    let normalizedValue;
+                    if (displayMaxConc > displayMinConc) {
+                        normalizedValue = (avgConc - displayMinConc) / (displayMaxConc - displayMinConc);
+                    } else {
+                        normalizedValue = avgConc / displayMaxConc;
+                    }
                     normalizedValue = Math.max(0, Math.min(1, normalizedValue));
+                    
+                    if (normalizedValue < 0.00000001) continue;
                     
                     const colorIndex = Math.min(Math.floor(normalizedValue * numLevels), numLevels - 1);
                     
                     const polygon = L.polygon([
-                        [grid_lat[lat], grid_lon[lon]],
-                        [grid_lat[latEnd], grid_lon[lon]],
-                        [grid_lat[latEnd], grid_lon[lonEnd]],
-                        [grid_lat[lat], grid_lon[lonEnd]]
-                    ], {
+                        wgs84ToGcj02(grid_lon[lon], grid_lat[lat]),
+                        wgs84ToGcj02(grid_lon[lon], grid_lat[latEnd]),
+                        wgs84ToGcj02(grid_lon[lonEnd], grid_lat[latEnd]),
+                        wgs84ToGcj02(grid_lon[lonEnd], grid_lat[lat])
+                    ].map(c => [c[1], c[0]]), {
                         color: colors[colorIndex],
                         fillColor: colors[colorIndex],
                         fillOpacity: 0.5,

@@ -153,27 +153,37 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
     
     receptor_contributions = {}
     for receptor in receptors:
-        lat_idx = np.argmin(np.abs(grid_lat - receptor.latitude))
-        lon_idx = np.argmin(np.abs(grid_lon - receptor.longitude))
-        
         pollutant_receptor_data = {}
         
         for p_type in all_pollutants:
             p_source_data = []
             p_total = 0.0
             
-            for i, source in enumerate(sources):
-                if i >= len(source_pollutant_conc_fields):
-                    continue
+            for source in sources:
+                source_emission_rate = 0.0
+                if source.pollutants:
+                    for p in source.pollutants:
+                        if p.pollutant_type == p_type:
+                            source_emission_rate += p.emission_rate
                 
-                source_p_conc = source_pollutant_conc_fields[i]
-                if p_type in source_p_conc:
-                    conc = float(source_p_conc[p_type][lat_idx, lon_idx])
+                if source_emission_rate > 0:
+                    conc = model.calculate_receptor_concentration(
+                        source_lat=source.latitude,
+                        source_lon=source.longitude,
+                        source_height=source.height,
+                        emission_rate=source_emission_rate,
+                        receptor_lat=receptor.latitude,
+                        receptor_lon=receptor.longitude,
+                        receptor_height=receptor.height,
+                        temperature=source.temperature,
+                        velocity=source.velocity,
+                        diameter=source.diameter
+                    )
                     p_total += conc
                     p_source_data.append({
                         "source_id": source.id,
                         "source_name": source.name,
-                        "concentration": conc,
+                        "concentration": float(conc),
                         "pollutant": p_type
                     })
             
