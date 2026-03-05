@@ -359,7 +359,6 @@
                         <option value="osm">高德街道</option>
                         <option value="satellite">高德卫星</option>
                         <option value="hybrid">卫星+标注</option>
-                        <option value="terrain">高德地形</option>
                     </select>
                     <select id="metSelect" class="select" style="width: 200px;">
                         <option value="">选择气象场...</option>
@@ -585,10 +584,6 @@
                 url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',
                 options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] },
                 overlay: 'https://webst0{s}.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}'
-            },
-            terrain: {
-                url: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}',
-                options: { maxZoom: 18, subdomains: ['1', '2', '3', '4'] }
             }
         };
         
