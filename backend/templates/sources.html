@@ -333,6 +333,7 @@
                         <tr>
                             <th>ID</th>
                             <th>名称</th>
+                            <th>类型</th>
                             <th>位置</th>
                             <th>高度(m)</th>
                             <th>污染物</th>
@@ -358,7 +359,16 @@
                     <input type="text" class="form-input" id="name" placeholder="请输入排放源名称">
                 </div>
                 
-                <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">排放源类型 *</label>
+                    <select class="form-input" id="sourceType" onchange="switchSourceType()">
+                        <option value="point">点源</option>
+                        <option value="area">面源（矩形）</option>
+                        <option value="line">线源（直线）</option>
+                    </select>
+                </div>
+                
+                <div class="form-row" id="centerCoordsRow">
                     <div class="form-group">
                         <label class="form-label">纬度 *</label>
                         <input type="number" class="form-input" id="latitude" value="39.9" step="0.000001">
@@ -369,25 +379,105 @@
                     </div>
                 </div>
                 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">烟囱高度</label>
-                        <input type="number" class="form-input" id="height" value="50">
+                <div id="pointSourceParams">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">烟囱高度</label>
+                            <input type="number" class="form-input" id="height" value="50">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">烟囱直径</label>
+                            <input type="number" class="form-input" id="diameter" value="2" step="0.1">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">烟囱直径</label>
-                        <input type="number" class="form-input" id="diameter" value="2" step="0.1">
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">烟气温度 (K)</label>
+                            <input type="number" class="form-input" id="temperature" value="400">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">出口速度</label>
+                            <input type="number" class="form-input" id="velocity" value="15">
+                        </div>
                     </div>
                 </div>
                 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">烟气温度 (K)</label>
-                        <input type="number" class="form-input" id="temperature" value="400">
+                <div id="areaSourceParams" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">面源长度</label>
+                            <input type="number" class="form-input" id="areaLength" value="100" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">面源宽度</label>
+                            <input type="number" class="form-input" id="areaWidth" value="100" step="1">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">出口速度</label>
-                        <input type="number" class="form-input" id="velocity" value="15">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">面源高度</label>
+                            <input type="number" class="form-input" id="areaHeight" value="0" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">烟气温度 (K)</label>
+                            <input type="number" class="form-input" id="areaTemperature" value="300" step="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">初始垂直扩散参数 σz0 (m)</label>
+                            <input type="number" class="form-input" id="sigmaZ0Area" value="" step="0.1" placeholder="留空自动计算">
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="lineSourceParams" style="display: none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">起点纬度</label>
+                            <input type="number" class="form-input" id="startLat" value="39.9" step="0.000001">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">起点经度</label>
+                            <input type="number" class="form-input" id="startLon" value="116.4" step="0.000001">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">终点纬度</label>
+                            <input type="number" class="form-input" id="endLat" value="39.91" step="0.000001">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">终点经度</label>
+                            <input type="number" class="form-input" id="endLon" value="116.41" step="0.000001">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">线源宽度</label>
+                            <input type="number" class="form-input" id="lineWidth" value="10" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">线源高度</label>
+                            <input type="number" class="form-input" id="lineHeight" value="0" step="0.1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">烟气温度 (K)</label>
+                            <input type="number" class="form-input" id="lineTemperature" value="300" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">分段长度</label>
+                            <input type="number" class="form-input" id="lineSegmentLength" value="10" step="1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">初始垂直扩散参数 σz0 (m)</label>
+                            <input type="number" class="form-input" id="sigmaZ0Line" value="" step="0.1" placeholder="留空自动计算">
+                        </div>
                     </div>
                 </div>
                 
@@ -400,7 +490,7 @@
                     </div>
                 </div>
                 
-                <div class="form-row">
+                <div class="form-row" id="markerRow">
                     <div class="form-group">
                         <label class="form-label">标记符号</label>
                         <div class="marker-symbol-grid" id="symbolGrid"></div>
@@ -426,6 +516,19 @@
         let pollutantTypes = [];
         let markerSymbols = [];
         let selectedSymbol = 'factory';
+        let currentSourceType = 'point';
+        
+        function switchSourceType() {
+            const type = document.getElementById('sourceType').value;
+            currentSourceType = type;
+            
+            document.getElementById('pointSourceParams').style.display = type === 'point' ? 'block' : 'none';
+            document.getElementById('areaSourceParams').style.display = type === 'area' ? 'block' : 'none';
+            document.getElementById('lineSourceParams').style.display = type === 'line' ? 'block' : 'none';
+            
+            document.getElementById('centerCoordsRow').style.display = type === 'line' ? 'none' : 'flex';
+            document.getElementById('markerRow').style.display = type === 'line' ? 'none' : 'flex';
+        }
         
         async function loadInitData() {
             try {
@@ -492,10 +595,18 @@
                 
                 const symbol = markerSymbols.find(m => m.symbol === s.marker_symbol) || {icon: '📍'};
                 
+                const typeLabels = {
+                    'point': '点源',
+                    'area': '面源',
+                    'line': '线源'
+                };
+                const typeLabel = typeLabels[s.source_type] || '点源';
+                
                 return `
                     <tr>
                         <td>${s.id}</td>
                         <td>${s.name}</td>
+                        <td><span class="badge badge-default">${typeLabel}</span></td>
                         <td>${s.latitude.toFixed(4)}, ${s.longitude.toFixed(4)}</td>
                         <td>${s.height}</td>
                         <td><div class="pollutant-tags">${pollutantTags}</div></td>
@@ -540,16 +651,33 @@
             document.getElementById('modalTitle').textContent = '新增排放源';
             document.getElementById('editId').value = '';
             document.getElementById('name').value = '';
+            document.getElementById('sourceType').value = 'point';
             document.getElementById('latitude').value = 39.9;
             document.getElementById('longitude').value = 116.4;
             document.getElementById('height').value = 50;
             document.getElementById('temperature').value = 400;
             document.getElementById('velocity').value = 15;
             document.getElementById('diameter').value = 2;
+            document.getElementById('areaLength').value = 100;
+            document.getElementById('areaWidth').value = 100;
+            document.getElementById('areaHeight').value = 0;
+            document.getElementById('areaTemperature').value = 300;
+            document.getElementById('sigmaZ0Area').value = '';
+            document.getElementById('startLat').value = 39.9;
+            document.getElementById('startLon').value = 116.4;
+            document.getElementById('endLat').value = 39.91;
+            document.getElementById('endLon').value = 116.41;
+            document.getElementById('lineWidth').value = 10;
+            document.getElementById('lineHeight').value = 0;
+            document.getElementById('lineTemperature').value = 300;
+            document.getElementById('lineSegmentLength').value = 10;
+            document.getElementById('sigmaZ0Line').value = '';
             document.getElementById('marker_color').value = '#FF5722';
             document.getElementById('colorValue').textContent = '#FF5722';
             document.getElementById('pollutantList').innerHTML = '';
             selectedSymbol = 'factory';
+            currentSourceType = 'point';
+            switchSourceType();
             renderSymbolGrid();
             document.getElementById('modal').classList.add('show');
         }
@@ -559,14 +687,32 @@
             document.getElementById('modalTitle').textContent = '编辑排放源';
             document.getElementById('editId').value = id;
             document.getElementById('name').value = s.name;
+            document.getElementById('sourceType').value = s.source_type || 'point';
             document.getElementById('latitude').value = s.latitude;
             document.getElementById('longitude').value = s.longitude;
             document.getElementById('height').value = s.height;
             document.getElementById('temperature').value = s.temperature;
             document.getElementById('velocity').value = s.velocity;
             document.getElementById('diameter').value = s.diameter;
+            document.getElementById('areaLength').value = s.area_length || 100;
+            document.getElementById('areaWidth').value = s.area_width || 100;
+            document.getElementById('areaHeight').value = s.area_height || 0;
+            document.getElementById('areaTemperature').value = s.area_temperature || 300;
+            document.getElementById('sigmaZ0Area').value = s.sigma_z0_area || '';
+            document.getElementById('startLat').value = s.start_lat || 39.9;
+            document.getElementById('startLon').value = s.start_lon || 116.4;
+            document.getElementById('endLat').value = s.end_lat || 39.91;
+            document.getElementById('endLon').value = s.end_lon || 116.41;
+            document.getElementById('lineWidth').value = s.line_width || 10;
+            document.getElementById('lineHeight').value = s.line_height || 0;
+            document.getElementById('lineTemperature').value = s.line_temperature || 300;
+            document.getElementById('lineSegmentLength').value = s.line_segment_length || 10;
+            document.getElementById('sigmaZ0Line').value = s.sigma_z0_line || '';
             document.getElementById('marker_color').value = s.marker_color;
             document.getElementById('colorValue').textContent = s.marker_color;
+            
+            currentSourceType = s.source_type || 'point';
+            switchSourceType();
             
             selectedSymbol = s.marker_symbol || 'factory';
             renderSymbolGrid();
@@ -616,14 +762,31 @@
         
         async function saveSource() {
             const id = document.getElementById('editId').value;
+            const sourceType = document.getElementById('sourceType').value;
+            
             const data = {
                 name: document.getElementById('name').value,
+                source_type: sourceType,
                 latitude: parseFloat(document.getElementById('latitude').value),
                 longitude: parseFloat(document.getElementById('longitude').value),
                 height: parseFloat(document.getElementById('height').value),
                 temperature: parseFloat(document.getElementById('temperature').value),
                 velocity: parseFloat(document.getElementById('velocity').value),
                 diameter: parseFloat(document.getElementById('diameter').value),
+                area_length: parseFloat(document.getElementById('areaLength').value) || 100,
+                area_width: parseFloat(document.getElementById('areaWidth').value) || 100,
+                area_height: parseFloat(document.getElementById('areaHeight').value) || 0,
+                area_temperature: parseFloat(document.getElementById('areaTemperature').value) || 300,
+                sigma_z0_area: parseFloat(document.getElementById('sigmaZ0Area').value) || null,
+                start_lat: parseFloat(document.getElementById('startLat').value) || null,
+                start_lon: parseFloat(document.getElementById('startLon').value) || null,
+                end_lat: parseFloat(document.getElementById('endLat').value) || null,
+                end_lon: parseFloat(document.getElementById('endLon').value) || null,
+                line_width: parseFloat(document.getElementById('lineWidth').value) || 10,
+                line_height: parseFloat(document.getElementById('lineHeight').value) || 0,
+                line_temperature: parseFloat(document.getElementById('lineTemperature').value) || 300,
+                line_segment_length: parseFloat(document.getElementById('lineSegmentLength').value) || 10,
+                sigma_z0_line: parseFloat(document.getElementById('sigmaZ0Line').value) || null,
                 marker_symbol: selectedSymbol,
                 marker_color: document.getElementById('marker_color').value,
                 pollutants: getPollutants(),

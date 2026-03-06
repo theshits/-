@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>空气污染扩散模拟平台</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         :root {
             --primary: #007AFF;
@@ -197,15 +196,6 @@
         .badge-primary { background: rgba(0, 122, 255, 0.1); color: var(--primary); }
         .badge-success { background: rgba(52, 199, 89, 0.1); color: var(--success); }
         .badge-warning { background: rgba(255, 149, 0, 0.1); color: var(--warning); }
-        .polygon-info {
-            background: rgba(0, 122, 255, 0.05);
-            border: 1px solid rgba(0, 122, 255, 0.2);
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 12px;
-        }
-        .polygon-info h4 { font-size: 13px; margin-bottom: 8px; }
-        .polygon-info p { font-size: 12px; color: var(--text-secondary); margin: 4px 0; }
         .loading {
             display: flex;
             align-items: center;
@@ -317,6 +307,21 @@
             font-size: 11px;
             margin: 2px;
         }
+        .leaflet-div-icon {
+            background: #007AFF !important;
+            border: 2px solid white !important;
+            border-radius: 50% !important;
+            width: 12px !important;
+            height: 12px !important;
+            margin-left: -6px !important;
+            margin-top: -6px !important;
+            cursor: pointer !important;
+            pointer-events: all !important;
+        }
+        .leaflet-div-icon:hover {
+            background: #0055CC !important;
+            transform: scale(1.2);
+        }
     </style>
 </head>
 <body>
@@ -336,9 +341,9 @@
                 <div class="slider-container">
                     <div class="slider-label">
                         <span>模拟范围</span>
-                        <span id="domainSizeValue">30 km</span>
+                        <span id="domainSizeValue">5 km</span>
                     </div>
-                    <input type="range" id="domainSizeSlider" class="apple-slider" min="5" max="100" value="30" step="5" oninput="updateSliderValue('domainSize')">
+                    <input type="range" id="domainSizeSlider" class="apple-slider" min="5" max="100" value="5" step="5" oninput="updateSliderValue('domainSize')">
                 </div>
                 <div class="slider-container">
                     <div class="slider-label">
@@ -379,21 +384,6 @@
             <div class="map-container">
                 <div id="map"></div>
                 <div class="sidebar-panel">
-                    <div class="card">
-                        <div class="card-title">
-                            <span>绘制选择区域</span>
-                            <button class="btn btn-sm btn-primary" onclick="toggleDraw()">✏️ 绘制</button>
-                        </div>
-                        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
-                            在地图上绘制多边形区域，仅模拟区域内排放源的影响
-                        </p>
-                        <div id="polygonInfo" class="polygon-info" style="display: none;">
-                            <h4>✅ 已选择区域</h4>
-                            <p>区域内排放源: <span id="polygonSources">0</span> 个</p>
-                            <p>区域内受体点: <span id="polygonReceptors">0</span> 个</p>
-                            <button class="btn btn-sm btn-secondary" onclick="clearPolygon()" style="margin-top: 8px; width: 100%;">清除选择区域</button>
-                        </div>
-                    </div>
                     <div class="card">
                         <div class="card-title">气象控制</div>
                         <div class="wind-rose">
@@ -456,7 +446,7 @@
                                     <option value="rainbow">彩虹</option>
                                     <option value="turbo">Turbo</option>
                                     <option value="spectral_r">Spectral_r</option>
-                                    <option value="jet">Jet</option>
+                                    <option value="jet" selected>Jet</option>
                                 </select>
                                 <button class="btn btn-sm btn-secondary" onclick="openColorSettings()" title="色阶设置">⚙️</button>
                             </div>
@@ -506,13 +496,10 @@
         </main>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let map, sourceMarkers = [], receptorMarkers = [], plumeLayer, shpLayer;
-        let drawnItems, drawControl, currentPolygon = null;
         let windDirection = 0, windSpeed = 2;
-        let isDrawing = false;
         let currentTileLayer = null;
         let shpGeojson = null;
         let overlayLayer = null;
@@ -523,13 +510,15 @@
             factory: '🏭',
             industry: '⚙️',
             power: '⚡',
-            traffic: '🚗',
-            residential: '🏠',
-            monitor: '📡',
-            station: '📍',
-            sensor: '🔬',
-            alert: '⚠️',
-            info: 'ℹ️'
+            chemical: '🧪',
+            circle: '●',
+            square: '■',
+            triangle: '▲',
+            diamond: '◆',
+            star: '★',
+            hexagon: '⬡',
+            pentagon: '⬠',
+            cross: '✚',
         };
         
         const COLOR_SCALES = {
@@ -621,17 +610,28 @@
 
         async function init() {
             await initMap();
-            restoreState();
             await loadData();
+            restoreState();
             initWindRose();
-            initDrawing();
             initSliders();
         }
         
         function saveState() {
             if (!map) return;
+            
+            const existingState = localStorage.getItem('pollutionSimState');
+            let existingHasSimulation = false;
+            if (existingState) {
+                try {
+                    const parsed = JSON.parse(existingState);
+                    existingHasSimulation = parsed.hasSimulation || false;
+                } catch (e) {}
+            }
+            
+            const hasSimulation = lastSimulationResult !== null || existingHasSimulation;
+            
             const state = {
-                mapCenter: map.getCenter(),
+                mapCenter: { lat: map.getCenter().lat, lng: map.getCenter().lng },
                 mapZoom: map.getZoom(),
                 mapLayer: document.getElementById('mapLayerSelect').value,
                 colorScale: document.getElementById('colorScaleSelect').value,
@@ -640,8 +640,23 @@
                 pollutantType: document.getElementById('pollutantSelect').value,
                 domainSize: document.getElementById('domainSizeSlider').value,
                 gridResolution: document.getElementById('gridResolutionSlider').value,
-                hasSimulation: lastSimulationResult !== null
+                hasSimulation: hasSimulation
             };
+            
+            if (lastSimulationResult) {
+                try {
+                    const simData = JSON.stringify(lastSimulationResult);
+                    if (simData.length < 10 * 1024 * 1024) {
+                        localStorage.setItem('pollutionSimResult', simData);
+                    } else {
+                        console.warn('Simulation result too large to save:', (simData.length / 1024 / 1024).toFixed(2), 'MB');
+                        localStorage.removeItem('pollutionSimResult');
+                    }
+                } catch (e) {
+                    console.warn('Failed to save simulation result:', e);
+                }
+            }
+            
             localStorage.setItem('pollutionSimState', JSON.stringify(state));
         }
         
@@ -651,14 +666,6 @@
                 if (!saved) return;
                 
                 const state = JSON.parse(saved);
-                
-                if (state.mapCenter && state.mapZoom) {
-                    map.off('moveend', saveState);
-                    map.off('zoomend', saveState);
-                    map.setView(state.mapCenter, state.mapZoom);
-                    map.on('moveend', saveState);
-                    map.on('zoomend', saveState);
-                }
                 
                 if (state.mapLayer) {
                     document.getElementById('mapLayerSelect').value = state.mapLayer;
@@ -692,6 +699,21 @@
                     document.getElementById('gridResolutionSlider').value = state.gridResolution;
                     updateSliderValue('gridResolution');
                 }
+                
+                if (state.hasSimulation) {
+                    try {
+                        const simResult = localStorage.getItem('pollutionSimResult');
+                        if (simResult) {
+                            lastSimulationResult = JSON.parse(simResult);
+                            visualizePlume(lastSimulationResult);
+                            updateLegendGradient(document.getElementById('colorScaleSelect').value);
+                            updateContributions(lastSimulationResult.receptor_contributions);
+                            document.getElementById('resultCard').style.display = 'block';
+                        }
+                    } catch (e) {
+                        console.warn('Failed to restore simulation result:', e);
+                    }
+                }
             } catch (e) {
                 console.error('Failed to restore state:', e);
             }
@@ -703,15 +725,23 @@
                 attributionControl: false
             });
             
-            map.on('moveend', saveState);
-            map.on('zoomend', saveState);
-            
             currentTileLayer = L.tileLayer(TILE_LAYERS.osm.url, TILE_LAYERS.osm.options).addTo(map);
             
-            map.setView([35.0, 110.0], 5);
-            
             const savedState = localStorage.getItem('pollutionSimState');
-            if (!savedState) {
+            let hasSavedState = false;
+            if (savedState) {
+                try {
+                    const state = JSON.parse(savedState);
+                    if (state.mapCenter && state.mapZoom) {
+                        map.setView([state.mapCenter.lat, state.mapCenter.lng], state.mapZoom);
+                        hasSavedState = true;
+                    }
+                } catch (e) {}
+            }
+            
+            if (!hasSavedState) {
+                map.setView([35.0, 110.0], 5);
+                
                 try {
                     const boundsRes = await fetch('/api/map/bounds');
                     if (boundsRes.ok) {
@@ -728,6 +758,9 @@
                     console.error('Failed to load map bounds:', e);
                 }
             }
+            
+            map.on('moveend', saveState);
+            map.on('zoomend', saveState);
             
             try {
                 const geojsonRes = await fetch('/api/map/geojson');
@@ -812,117 +845,7 @@
             sourceMarkers.forEach(m => m.addTo(map));
             receptorMarkers.forEach(m => m.addTo(map));
             if (plumeLayer) plumeLayer.addTo(map);
-            if (drawnItems) drawnItems.addTo(map);
             saveState();
-        }
-        
-        function initDrawing() {
-            drawnItems = new L.FeatureGroup();
-            map.addLayer(drawnItems);
-            
-            drawControl = new L.Control.Draw({
-                position: 'topleft',
-                draw: {
-                    polygon: {
-                        allowIntersection: false,
-                        shapeOptions: {
-                            color: '#007AFF',
-                            fillColor: '#007AFF',
-                            fillOpacity: 0.2,
-                            weight: 2
-                        }
-                    },
-                    polyline: false,
-                    rectangle: false,
-                    circle: false,
-                    circlemarker: false,
-                    marker: false
-                },
-                edit: {
-                    featureGroup: drawnItems,
-                    remove: true
-                }
-            });
-            
-            map.on(L.Draw.Event.CREATED, function(e) {
-                drawnItems.clearLayers();
-                drawnItems.addLayer(e.layer);
-                currentPolygon = e.layer;
-                updatePolygonInfo();
-                isDrawing = false;
-            });
-            
-            map.on(L.Draw.Event.DELETED, function(e) {
-                currentPolygon = null;
-                updatePolygonInfo();
-            });
-        }
-        
-        function toggleDraw() {
-            if (isDrawing) return;
-            
-            const polygonDrawer = new L.Draw.Polygon(map, {
-                allowIntersection: false,
-                shapeOptions: {
-                    color: '#007AFF',
-                    fillColor: '#007AFF',
-                    fillOpacity: 0.2,
-                    weight: 2
-                }
-            });
-            polygonDrawer.enable();
-            isDrawing = true;
-        }
-        
-        function clearPolygon() {
-            drawnItems.clearLayers();
-            currentPolygon = null;
-            updatePolygonInfo();
-        }
-        
-        function updatePolygonInfo() {
-            const infoDiv = document.getElementById('polygonInfo');
-            
-            if (currentPolygon) {
-                const polygonCoords = currentPolygon.toGeoJSON().geometry.coordinates[0];
-                let sourceCount = 0;
-                let receptorCount = 0;
-                
-                sourceMarkers.forEach(m => {
-                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
-                        sourceCount++;
-                    }
-                });
-                
-                receptorMarkers.forEach(m => {
-                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
-                        receptorCount++;
-                    }
-                });
-                
-                document.getElementById('polygonSources').textContent = sourceCount;
-                document.getElementById('polygonReceptors').textContent = receptorCount;
-                infoDiv.style.display = 'block';
-            } else {
-                infoDiv.style.display = 'none';
-            }
-        }
-        
-        function isPointInPolygon(point, polygon) {
-            const x = point.lng;
-            const y = point.lat;
-            let inside = false;
-            
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const xi = polygon[i][0], yi = polygon[i][1];
-                const xj = polygon[j][0], yj = polygon[j][1];
-                
-                if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
-                    inside = !inside;
-                }
-            }
-            
-            return inside;
         }
         
         async function loadData() {
@@ -950,56 +873,234 @@
             receptorMarkers = [];
             
             sources.filter(s => s.is_active).forEach(s => {
+                const sourceType = s.source_type || 'point';
                 const symbol = MARKER_SYMBOLS[s.marker_symbol] || '🏭';
-                const icon = L.divIcon({
-                    html: `<div style="
-                        background: ${s.marker_color};
-                        width: 32px;
-                        height: 32px;
-                        border-radius: 50%;
-                        border: 3px solid white;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        font-size: 14px;
-                    ">${symbol}</div>`,
-                    className: 'custom-marker',
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 16]
-                });
                 
-                let pollutantHtml = '';
-                if (s.pollutants && s.pollutants.length > 0) {
-                    pollutantHtml = s.pollutants.map(p => 
-                        `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
-                    ).join('');
-                }
-                
-                const gcj02Coord = wgs84ToGcj02(s.longitude, s.latitude);
-                const marker = L.marker([gcj02Coord[1], gcj02Coord[0]], {icon})
-                    .bindPopup(`
-                        <div class="popup-title">${s.name}</div>
+                if (sourceType === 'area') {
+                    const areaLength = s.area_length || 100;
+                    const areaWidth = s.area_width || 100;
+                    const latOffset = areaLength / 111000 / 2;
+                    const lonOffset = areaWidth / (111000 * Math.cos(s.latitude * Math.PI / 180)) / 2;
+                    
+                    const corners = [
+                        [s.latitude - latOffset, s.longitude - lonOffset],
+                        [s.latitude - latOffset, s.longitude + lonOffset],
+                        [s.latitude + latOffset, s.longitude + lonOffset],
+                        [s.latitude + latOffset, s.longitude - lonOffset]
+                    ];
+                    
+                    const gcj02Corners = corners.map(c => {
+                        const gcj = wgs84ToGcj02(c[1], c[0]);
+                        return [gcj[1], gcj[0]];
+                    });
+                    
+                    const rectangle = L.polygon(gcj02Corners, {
+                        color: s.marker_color,
+                        fillColor: s.marker_color,
+                        fillOpacity: 0.2,
+                        weight: 2,
+                        opacity: 0.8
+                    });
+                    
+                    let pollutantHtml = '';
+                    if (s.pollutants && s.pollutants.length > 0) {
+                        pollutantHtml = s.pollutants.map(p => 
+                            `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
+                        ).join('');
+                    }
+                    
+                    rectangle.bindPopup(`
+                        <div class="popup-title">${s.name} (面源)</div>
+                        <div class="popup-row">
+                            <span class="popup-label">尺寸</span>
+                            <span>${areaLength} × ${areaWidth} m</span>
+                        </div>
                         <div class="popup-row">
                             <span class="popup-label">高度</span>
-                            <span>${s.height} m</span>
-                        </div>
-                        <div class="popup-row">
-                            <span class="popup-label">烟气温度</span>
-                            <span>${s.temperature} K</span>
-                        </div>
-                        <div class="popup-row">
-                            <span class="popup-label">排放速率</span>
-                            <span>${s.emission_rate} g/s</span>
+                            <span>${s.area_height || 0} m</span>
                         </div>
                         <div style="margin-top: 8px;">
                             ${pollutantHtml}
                         </div>
-                    `)
-                    .addTo(map);
-                marker.sourceId = s.id;
-                marker.wgs84Coord = [s.latitude, s.longitude];
-                sourceMarkers.push(marker);
+                    `);
+                    
+                    rectangle.addTo(map);
+                    rectangle.sourceId = s.id;
+                    rectangle.wgs84Coord = [s.latitude, s.longitude];
+                    sourceMarkers.push(rectangle);
+                    
+                    const icon = L.divIcon({
+                        html: `<div style="
+                            background: ${s.marker_color};
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 4px;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 12px;
+                        ">${symbol}</div>`,
+                        className: 'custom-marker',
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14]
+                    });
+                    
+                    const gcj02Coord = wgs84ToGcj02(s.longitude, s.latitude);
+                    const marker = L.marker([gcj02Coord[1], gcj02Coord[0]], {icon})
+                        .bindPopup(`
+                            <div class="popup-title">${s.name} (面源)</div>
+                            <div class="popup-row">
+                                <span class="popup-label">尺寸</span>
+                                <span>${areaLength} × ${areaWidth} m</span>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-label">高度</span>
+                                <span>${s.area_height || 0} m</span>
+                            </div>
+                            <div style="margin-top: 8px;">
+                                ${pollutantHtml}
+                            </div>
+                        `)
+                        .addTo(map);
+                    marker.sourceId = s.id;
+                    sourceMarkers.push(marker);
+                    
+                } else if (sourceType === 'line') {
+                    const startLat = s.start_lat || s.latitude;
+                    const startLon = s.start_lon || s.longitude;
+                    const endLat = s.end_lat || s.latitude;
+                    const endLon = s.end_lon || s.longitude;
+                    const lineWidth = s.line_width || 10;
+                    
+                    const startGcj = wgs84ToGcj02(startLon, startLat);
+                    const endGcj = wgs84ToGcj02(endLon, endLat);
+                    
+                    const line = L.polyline([[startGcj[1], startGcj[0]], [endGcj[1], endGcj[0]]], {
+                        color: s.marker_color,
+                        weight: Math.max(3, lineWidth / 5),
+                        opacity: 0.8
+                    });
+                    
+                    let pollutantHtml = '';
+                    if (s.pollutants && s.pollutants.length > 0) {
+                        pollutantHtml = s.pollutants.map(p => 
+                            `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
+                        ).join('');
+                    }
+                    
+                    const lineLength = Math.sqrt(
+                        Math.pow((endLat - startLat) * 111000, 2) + 
+                        Math.pow((endLon - startLon) * 111000 * Math.cos(startLat * Math.PI / 180), 2)
+                    ).toFixed(0);
+                    
+                    line.bindPopup(`
+                        <div class="popup-title">${s.name} (线源)</div>
+                        <div class="popup-row">
+                            <span class="popup-label">长度</span>
+                            <span>${lineLength} m</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">宽度</span>
+                            <span>${lineWidth} m</span>
+                        </div>
+                        <div class="popup-row">
+                            <span class="popup-label">高度</span>
+                            <span>${s.line_height || 0} m</span>
+                        </div>
+                        <div style="margin-top: 8px;">
+                            ${pollutantHtml}
+                        </div>
+                    `);
+                    
+                    line.addTo(map);
+                    line.sourceId = s.id;
+                    sourceMarkers.push(line);
+                    
+                    const startIcon = L.divIcon({
+                        html: `<div style="
+                            background: ${s.marker_color};
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 50%;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                        "></div>`,
+                        className: 'custom-marker',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    
+                    const endIcon = L.divIcon({
+                        html: `<div style="
+                            background: ${s.marker_color};
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 50%;
+                            border: 2px solid white;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                        "></div>`,
+                        className: 'custom-marker',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    
+                    const startMarker = L.marker([startGcj[1], startGcj[0]], {icon: startIcon}).addTo(map);
+                    const endMarker = L.marker([endGcj[1], endGcj[0]], {icon: endIcon}).addTo(map);
+                    sourceMarkers.push(startMarker, endMarker);
+                    
+                } else {
+                    const icon = L.divIcon({
+                        html: `<div style="
+                            background: ${s.marker_color};
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 50%;
+                            border: 3px solid white;
+                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 14px;
+                        ">${symbol}</div>`,
+                        className: 'custom-marker',
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
+                    });
+                    
+                    let pollutantHtml = '';
+                    if (s.pollutants && s.pollutants.length > 0) {
+                        pollutantHtml = s.pollutants.map(p => 
+                            `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
+                        ).join('');
+                    }
+                    
+                    const gcj02Coord = wgs84ToGcj02(s.longitude, s.latitude);
+                    const marker = L.marker([gcj02Coord[1], gcj02Coord[0]], {icon})
+                        .bindPopup(`
+                            <div class="popup-title">${s.name} (点源)</div>
+                            <div class="popup-row">
+                                <span class="popup-label">高度</span>
+                                <span>${s.height} m</span>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-label">烟气温度</span>
+                                <span>${s.temperature} K</span>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-label">出口速度</span>
+                                <span>${s.velocity} m/s</span>
+                            </div>
+                            <div style="margin-top: 8px;">
+                                ${pollutantHtml}
+                            </div>
+                        `)
+                        .addTo(map);
+                    marker.sourceId = s.id;
+                    marker.wgs84Coord = [s.latitude, s.longitude];
+                    sourceMarkers.push(marker);
+                }
             });
             
             receptors.filter(r => r.is_active).forEach(r => {
@@ -1162,31 +1263,8 @@
                 return;
             }
             
-            let sourceIds = null;
-            let receptorIds = null;
-            
-            if (currentPolygon) {
-                const polygonCoords = currentPolygon.toGeoJSON().geometry.coordinates[0];
-                sourceIds = [];
-                receptorIds = [];
-                
-                sourceMarkers.forEach(m => {
-                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
-                        sourceIds.push(m.sourceId);
-                    }
-                });
-                
-                receptorMarkers.forEach(m => {
-                    if (isPointInPolygon(m.getLatLng(), polygonCoords)) {
-                        receptorIds.push(m.receptorId);
-                    }
-                });
-                
-                if (sourceIds.length === 0) {
-                    alert('选择区域内没有排放源');
-                    return;
-                }
-            }
+            localStorage.removeItem('pollutionSimResult');
+            lastSimulationResult = null;
             
             const pollutantType = document.getElementById('pollutantSelect').value || null;
             
@@ -1198,8 +1276,6 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         meteorology_id: parseInt(metId),
-                        source_ids: sourceIds,
-                        receptor_ids: receptorIds,
                         pollutant_type: pollutantType,
                         grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
                         domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000
@@ -1409,6 +1485,7 @@
             }
             
             customConcRange = { min: minVal, max: maxVal };
+            saveState();
             
             if (lastSimulationResult) {
                 visualizePlume(lastSimulationResult);
@@ -1419,6 +1496,7 @@
             customConcRange = null;
             document.getElementById('concMin').value = 0;
             document.getElementById('concMax').value = 100;
+            saveState();
             
             if (lastSimulationResult) {
                 visualizePlume(lastSimulationResult);
@@ -1492,6 +1570,7 @@
             if (plumeLayer) map.removeLayer(plumeLayer);
             plumeLayer = null;
             lastSimulationResult = null;
+            localStorage.removeItem('pollutionSimResult');
             document.getElementById('resultCard').style.display = 'none';
             document.getElementById('contributions').innerHTML = '<div class="empty">请运行模拟查看结果</div>';
             saveState();

@@ -84,6 +84,7 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         source_pollutant_data = {}
         total_emission_rate = 0.0
         source_pollutants = []
+        source_type = getattr(source, 'source_type', 'point')
         
         if source.pollutants:
             for p in source.pollutants:
@@ -106,17 +107,70 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         if total_emission_rate <= 0:
             continue
         
-        source_conc = model.calculate_concentration_field(
-            source_lat=source.latitude,
-            source_lon=source.longitude,
-            source_height=source.height,
-            emission_rate=total_emission_rate,
-            grid_lat=grid_lat,
-            grid_lon=grid_lon,
-            temperature=source.temperature,
-            velocity=source.velocity,
-            diameter=source.diameter
-        )
+        if source_type == 'point':
+            source_conc = model.calculate_concentration_field(
+                source_lat=source.latitude,
+                source_lon=source.longitude,
+                source_height=source.height,
+                emission_rate=total_emission_rate,
+                grid_lat=grid_lat,
+                grid_lon=grid_lon,
+                temperature=source.temperature,
+                velocity=source.velocity,
+                diameter=source.diameter
+            )
+        elif source_type == 'area':
+            area_length = getattr(source, 'area_length', 100) or 100
+            area_width = getattr(source, 'area_width', 100) or 100
+            area_height = getattr(source, 'area_height', 0) or 0
+            sigma_z0_area = getattr(source, 'sigma_z0_area', None)
+            
+            source_conc = model.calculate_area_source_concentration_field(
+                center_lat=source.latitude,
+                center_lon=source.longitude,
+                area_length=area_length,
+                area_width=area_width,
+                area_height=area_height,
+                emission_rate=total_emission_rate,
+                grid_lat=grid_lat,
+                grid_lon=grid_lon,
+                sigma_z0=sigma_z0_area
+            )
+        elif source_type == 'line':
+            start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
+            start_lon = getattr(source, 'start_lon', source.longitude) or source.longitude
+            end_lat = getattr(source, 'end_lat', source.latitude) or source.latitude
+            end_lon = getattr(source, 'end_lon', source.longitude) or source.longitude
+            line_width = getattr(source, 'line_width', 10) or 10
+            line_height = getattr(source, 'line_height', 0) or 0
+            segment_length = getattr(source, 'line_segment_length', 10) or 10
+            sigma_z0_line = getattr(source, 'sigma_z0_line', None)
+            
+            source_conc = model.calculate_line_source_concentration_field(
+                start_lat=start_lat,
+                start_lon=start_lon,
+                end_lat=end_lat,
+                end_lon=end_lon,
+                line_width=line_width,
+                line_height=line_height,
+                emission_rate=total_emission_rate,
+                grid_lat=grid_lat,
+                grid_lon=grid_lon,
+                segment_length=segment_length,
+                sigma_z0=sigma_z0_line
+            )
+        else:
+            source_conc = model.calculate_concentration_field(
+                source_lat=source.latitude,
+                source_lon=source.longitude,
+                source_height=source.height,
+                emission_rate=total_emission_rate,
+                grid_lat=grid_lat,
+                grid_lon=grid_lon,
+                temperature=source.temperature,
+                velocity=source.velocity,
+                diameter=source.diameter
+            )
         
         total_concentration += source_conc
         source_conc_fields.append(source_conc)
@@ -124,17 +178,56 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         source_p_conc = {}
         for p_type, p_rate in source_pollutant_data.items():
             if p_rate > 0:
-                p_conc = model.calculate_concentration_field(
-                    source_lat=source.latitude,
-                    source_lon=source.longitude,
-                    source_height=source.height,
-                    emission_rate=p_rate,
-                    grid_lat=grid_lat,
-                    grid_lon=grid_lon,
-                    temperature=source.temperature,
-                    velocity=source.velocity,
-                    diameter=source.diameter
-                )
+                if source_type == 'point':
+                    p_conc = model.calculate_concentration_field(
+                        source_lat=source.latitude,
+                        source_lon=source.longitude,
+                        source_height=source.height,
+                        emission_rate=p_rate,
+                        grid_lat=grid_lat,
+                        grid_lon=grid_lon,
+                        temperature=source.temperature,
+                        velocity=source.velocity,
+                        diameter=source.diameter
+                    )
+                elif source_type == 'area':
+                    p_conc = model.calculate_area_source_concentration_field(
+                        center_lat=source.latitude,
+                        center_lon=source.longitude,
+                        area_length=area_length,
+                        area_width=area_width,
+                        area_height=area_height,
+                        emission_rate=p_rate,
+                        grid_lat=grid_lat,
+                        grid_lon=grid_lon,
+                        sigma_z0=sigma_z0_area
+                    )
+                elif source_type == 'line':
+                    p_conc = model.calculate_line_source_concentration_field(
+                        start_lat=start_lat,
+                        start_lon=start_lon,
+                        end_lat=end_lat,
+                        end_lon=end_lon,
+                        line_width=line_width,
+                        line_height=line_height,
+                        emission_rate=p_rate,
+                        grid_lat=grid_lat,
+                        grid_lon=grid_lon,
+                        segment_length=segment_length,
+                        sigma_z0=sigma_z0_line
+                    )
+                else:
+                    p_conc = model.calculate_concentration_field(
+                        source_lat=source.latitude,
+                        source_lon=source.longitude,
+                        source_height=source.height,
+                        emission_rate=p_rate,
+                        grid_lat=grid_lat,
+                        grid_lon=grid_lon,
+                        temperature=source.temperature,
+                        velocity=source.velocity,
+                        diameter=source.diameter
+                    )
                 source_p_conc[p_type] = p_conc
                 if p_type not in pollutant_concentrations:
                     pollutant_concentrations[p_type] = np.zeros((grid_points, grid_points))
@@ -167,18 +260,75 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                             source_emission_rate += p.emission_rate
                 
                 if source_emission_rate > 0:
-                    conc = model.calculate_receptor_concentration(
-                        source_lat=source.latitude,
-                        source_lon=source.longitude,
-                        source_height=source.height,
-                        emission_rate=source_emission_rate,
-                        receptor_lat=receptor.latitude,
-                        receptor_lon=receptor.longitude,
-                        receptor_height=receptor.height,
-                        temperature=source.temperature,
-                        velocity=source.velocity,
-                        diameter=source.diameter
-                    )
+                    source_type = getattr(source, 'source_type', 'point')
+                    
+                    if source_type == 'point':
+                        conc = model.calculate_receptor_concentration(
+                            source_lat=source.latitude,
+                            source_lon=source.longitude,
+                            source_height=source.height,
+                            emission_rate=source_emission_rate,
+                            receptor_lat=receptor.latitude,
+                            receptor_lon=receptor.longitude,
+                            receptor_height=receptor.height,
+                            temperature=source.temperature,
+                            velocity=source.velocity,
+                            diameter=source.diameter
+                        )
+                    elif source_type == 'area':
+                        area_length = getattr(source, 'area_length', 100) or 100
+                        area_width = getattr(source, 'area_width', 100) or 100
+                        area_height = getattr(source, 'area_height', 0) or 0
+                        sigma_z0_area = getattr(source, 'sigma_z0_area', None)
+                        
+                        conc = model.calculate_area_source_receptor_concentration(
+                            center_lat=source.latitude,
+                            center_lon=source.longitude,
+                            area_length=area_length,
+                            area_width=area_width,
+                            area_height=area_height,
+                            emission_rate=source_emission_rate,
+                            receptor_lat=receptor.latitude,
+                            receptor_lon=receptor.longitude,
+                            sigma_z0=sigma_z0_area
+                        )
+                    elif source_type == 'line':
+                        start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
+                        start_lon = getattr(source, 'start_lon', source.longitude) or source.longitude
+                        end_lat = getattr(source, 'end_lat', source.latitude) or source.latitude
+                        end_lon = getattr(source, 'end_lon', source.longitude) or source.longitude
+                        line_width = getattr(source, 'line_width', 10) or 10
+                        line_height = getattr(source, 'line_height', 0) or 0
+                        segment_length = getattr(source, 'line_segment_length', 10) or 10
+                        sigma_z0_line = getattr(source, 'sigma_z0_line', None)
+                        
+                        conc = model.calculate_line_source_receptor_concentration(
+                            start_lat=start_lat,
+                            start_lon=start_lon,
+                            end_lat=end_lat,
+                            end_lon=end_lon,
+                            line_width=line_width,
+                            line_height=line_height,
+                            emission_rate=source_emission_rate,
+                            receptor_lat=receptor.latitude,
+                            receptor_lon=receptor.longitude,
+                            segment_length=segment_length,
+                            sigma_z0=sigma_z0_line
+                        )
+                    else:
+                        conc = model.calculate_receptor_concentration(
+                            source_lat=source.latitude,
+                            source_lon=source.longitude,
+                            source_height=source.height,
+                            emission_rate=source_emission_rate,
+                            receptor_lat=receptor.latitude,
+                            receptor_lon=receptor.longitude,
+                            receptor_height=receptor.height,
+                            temperature=source.temperature,
+                            velocity=source.velocity,
+                            diameter=source.diameter
+                        )
+                    
                     if conc < 1e-6:
                         conc = 0.0
                     p_total += conc

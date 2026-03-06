@@ -8,6 +8,8 @@ class EmissionSource(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
+    source_type = Column(String(20), default="point")
+    
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
     height = Column(Float, nullable=False, default=0.0)
@@ -15,6 +17,24 @@ class EmissionSource(Base):
     temperature = Column(Float, default=400.0)
     velocity = Column(Float, default=15.0)
     diameter = Column(Float, default=2.0)
+    
+    area_shape = Column(String(20), default="rectangle")
+    area_length = Column(Float, default=100.0)
+    area_width = Column(Float, default=100.0)
+    area_height = Column(Float, default=0.0)
+    area_temperature = Column(Float, default=300.0)
+    sigma_z0_area = Column(Float, default=None)
+    
+    line_type = Column(String(20), default="straight")
+    start_lon = Column(Float, default=None)
+    start_lat = Column(Float, default=None)
+    end_lon = Column(Float, default=None)
+    end_lat = Column(Float, default=None)
+    line_width = Column(Float, default=10.0)
+    line_height = Column(Float, default=0.0)
+    line_temperature = Column(Float, default=300.0)
+    sigma_z0_line = Column(Float, default=None)
+    line_segment_length = Column(Float, default=10.0)
     
     marker_symbol = Column(String(50), default="factory")
     marker_color = Column(String(20), default="#FF5722")
@@ -50,7 +70,6 @@ POLLUTANT_TYPES = {
 
 MARKER_SYMBOLS = {
     'factory': {'name': '工厂', 'icon': '🏭'},
-    'chimney': {'name': '烟囱', 'icon': '🏭'},
     'industry': {'name': '工业', 'icon': '⚙️'},
     'power': {'name': '电厂', 'icon': '⚡'},
     'chemical': {'name': '化工厂', 'icon': '🧪'},
@@ -59,6 +78,9 @@ MARKER_SYMBOLS = {
     'triangle': {'name': '三角形', 'icon': '▲'},
     'diamond': {'name': '菱形', 'icon': '◆'},
     'star': {'name': '星形', 'icon': '★'},
+    'hexagon': {'name': '六边形', 'icon': '⬡'},
+    'pentagon': {'name': '五边形', 'icon': '⬠'},
+    'cross': {'name': '十字', 'icon': '✚'},
 }
 
 class Receptor(Base):

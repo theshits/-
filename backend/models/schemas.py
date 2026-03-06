@@ -24,12 +24,29 @@ class PollutantEmissionResponse(PollutantEmissionBase):
 
 class EmissionSourceBase(BaseModel):
     name: str
+    source_type: str = "point"
     latitude: float
     longitude: float
     height: float = 0.0
     temperature: float = 400.0
     velocity: float = 15.0
     diameter: float = 2.0
+    area_shape: str = "rectangle"
+    area_length: float = 100.0
+    area_width: float = 100.0
+    area_height: float = 0.0
+    area_temperature: float = 300.0
+    sigma_z0_area: Optional[float] = None
+    line_type: str = "straight"
+    start_lon: Optional[float] = None
+    start_lat: Optional[float] = None
+    end_lon: Optional[float] = None
+    end_lat: Optional[float] = None
+    line_width: float = 10.0
+    line_height: float = 0.0
+    line_temperature: float = 300.0
+    sigma_z0_line: Optional[float] = None
+    line_segment_length: float = 10.0
     marker_symbol: str = "factory"
     marker_color: str = "#FF5722"
     is_active: bool = True
@@ -39,12 +56,29 @@ class EmissionSourceCreate(EmissionSourceBase):
 
 class EmissionSourceUpdate(BaseModel):
     name: Optional[str] = None
+    source_type: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     height: Optional[float] = None
     temperature: Optional[float] = None
     velocity: Optional[float] = None
     diameter: Optional[float] = None
+    area_shape: Optional[str] = None
+    area_length: Optional[float] = None
+    area_width: Optional[float] = None
+    area_height: Optional[float] = None
+    area_temperature: Optional[float] = None
+    sigma_z0_area: Optional[float] = None
+    line_type: Optional[str] = None
+    start_lon: Optional[float] = None
+    start_lat: Optional[float] = None
+    end_lon: Optional[float] = None
+    end_lat: Optional[float] = None
+    line_width: Optional[float] = None
+    line_height: Optional[float] = None
+    line_temperature: Optional[float] = None
+    sigma_z0_line: Optional[float] = None
+    line_segment_length: Optional[float] = None
     marker_symbol: Optional[str] = None
     marker_color: Optional[str] = None
     is_active: Optional[bool] = None

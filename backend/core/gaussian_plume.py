@@ -273,6 +273,266 @@ class GaussianPlumeModel:
             emission_rate=emission_rate,
             effective_height=effective_height
         )
+    
+    def calculate_area_source_concentration_field(
+        self,
+        center_lat: float,
+        center_lon: float,
+        area_length: float,
+        area_width: float,
+        area_height: float,
+        emission_rate: float,
+        grid_lat: np.ndarray,
+        grid_lon: np.ndarray,
+        sigma_z0: Optional[float] = None,
+        receptor_height: float = 0.0
+    ) -> np.ndarray:
+        """
+        计算矩形面源浓度场（虚拟点源法）
+        
+        Args:
+            center_lat: 面源中心纬度
+            center_lon: 面源中心经度
+            area_length: 面源长度
+            area_width: 面源宽度
+            area_height: 面源高度
+            emission_rate: 总排放速率
+            grid_lat: 网格纬度数组
+            grid_lon: 网格经度数组
+            sigma_z0: 初始垂直扩散参数 (可选, 自动计算)
+            receptor_height: 受体高度
+        
+        Returns:
+            浓度场 (μg/m³)
+        """
+        sigma_y0 = area_width / 4.3
+        if sigma_z0 is None:
+            sigma_z0 = area_height / 2.15 if area_height > 0 else 1.0
+        
+        params = self.PASQUILL_GIFFORD_PARAMS[self.stability_class]
+        
+        x_virtual_y = (sigma_y0 / params['ay']) ** (1 / params['by']) if params['ay'] > 0 else 0
+        x_virtual_z = (sigma_z0 / params['az']) ** (1 / params['bz']) if params['az'] > 0 else 0
+        x_virtual = max(x_virtual_y, x_virtual_z)
+        
+        wind_angle = np.radians(270 - self.wind_direction)
+        
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians(center_lat))
+        
+        concentration_field = np.zeros((len(grid_lat), len(grid_lon)))
+        
+        for i, lat in enumerate(grid_lat):
+            for j, lon in enumerate(grid_lon):
+                dy_lat = (lat - center_lat) * lat_to_m
+                dx_lon = (lon - center_lon) * lon_to_m
+                
+                x_rotated = dx_lon * np.cos(wind_angle) + dy_lat * np.sin(wind_angle)
+                y_rotated = -dx_lon * np.sin(wind_angle) + dy_lat * np.cos(wind_angle)
+                
+                x_eff = x_rotated + x_virtual
+                
+                if x_eff > 0:
+                    sigma_y, sigma_z = self.calculate_sigma(x_eff)
+                    sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
+                    sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
+                    
+                    emission_rate_ug = emission_rate * 1e6
+                    
+                    H = area_height
+                    
+                    term1 = emission_rate_ug / (2 * np.pi * self.wind_speed * sigma_y_eff * sigma_z_eff)
+                    term2 = np.exp(-y_rotated**2 / (2 * sigma_y_eff**2))
+                    term3 = np.exp(-(receptor_height - H)**2 / (2 * sigma_z_eff**2)) + np.exp(-(receptor_height + H)**2 / (2 * sigma_z_eff**2))
+                    
+                    concentration_field[i, j] = term1 * term2 * term3
+        
+        return concentration_field
+    
+    def calculate_area_source_receptor_concentration(
+        self,
+        center_lat: float,
+        center_lon: float,
+        area_length: float,
+        area_width: float,
+        area_height: float,
+        emission_rate: float,
+        receptor_lat: float,
+        receptor_lon: float,
+        sigma_z0: Optional[float] = None,
+        receptor_height: float = 0.0
+    ) -> float:
+        """
+        计算矩形面源对单个受体点的浓度
+        """
+        sigma_y0 = area_width / 4.3
+        if sigma_z0 is None:
+            sigma_z0 = area_height / 2.15 if area_height > 0 else 1.0
+        
+        params = self.PASQUILL_GIFFORD_PARAMS[self.stability_class]
+        
+        x_virtual_y = (sigma_y0 / params['ay']) ** (1 / params['by']) if params['ay'] > 0 else 0
+        x_virtual_z = (sigma_z0 / params['az']) ** (1 / params['bz']) if params['az'] > 0 else 0
+        x_virtual = max(x_virtual_y, x_virtual_z)
+        
+        wind_angle = np.radians(270 - self.wind_direction)
+        
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians(center_lat))
+        
+        dy_lat = (receptor_lat - center_lat) * lat_to_m
+        dx_lon = (receptor_lon - center_lon) * lon_to_m
+        
+        x_rotated = dx_lon * np.cos(wind_angle) + dy_lat * np.sin(wind_angle)
+        y_rotated = -dx_lon * np.sin(wind_angle) + dy_lat * np.cos(wind_angle)
+        
+        x_eff = x_rotated + x_virtual
+        
+        if x_eff <= 0:
+            return 0.0
+        
+        sigma_y, sigma_z = self.calculate_sigma(x_eff)
+        sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
+        sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
+        
+        emission_rate_ug = emission_rate * 1e6
+        
+        H = area_height
+        
+        term1 = emission_rate_ug / (2 * np.pi * self.wind_speed * sigma_y_eff * sigma_z_eff)
+        term2 = np.exp(-y_rotated**2 / (2 * sigma_y_eff**2))
+        term3 = np.exp(-(receptor_height - H)**2 / (2 * sigma_z_eff**2)) + np.exp(-(receptor_height + H)**2 / (2 * sigma_z_eff**2))
+        
+        return term1 * term2 * term3
+    
+    def calculate_line_source_concentration_field(
+        self,
+        start_lat: float,
+        start_lon: float,
+        end_lat: float,
+        end_lon: float,
+        line_width: float,
+        line_height: float,
+        emission_rate: float,
+        grid_lat: np.ndarray,
+        grid_lon: np.ndarray,
+        segment_length: float = 10.0,
+        sigma_z0: Optional[float] = None,
+        receptor_height: float = 0.0
+    ) -> np.ndarray:
+        """
+        计算直线线源浓度场（分段点源法）
+        
+        Args:
+            start_lat: 起点纬度
+            start_lon: 起点经度
+            end_lat: 终点纬度
+            end_lon: 终点经度
+            line_width: 线源宽度
+            line_height: 线源高度
+            emission_rate: 总排放速率
+            grid_lat: 网格纬度数组
+            grid_lon: 网格经度数组
+            segment_length: 分段长度
+            sigma_z0: 初始垂直扩散参数 (可选, 自动计算)
+            receptor_height: 受体高度
+        
+        Returns:
+            浓度场 (μg/m³)
+        """
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians((start_lat + end_lat) / 2))
+        
+        dx = (end_lon - start_lon) * lon_to_m
+        dy = (end_lat - start_lat) * lat_to_m
+        line_length = np.sqrt(dx**2 + dy**2)
+        
+        num_segments = max(1, int(line_length / segment_length))
+        segment_emission = emission_rate / num_segments
+        
+        if sigma_z0 is None:
+            sigma_z0 = line_height / 2.15 if line_height > 0 else 2.0
+        
+        sigma_y0 = line_width / 4.3
+        
+        concentration_field = np.zeros((len(grid_lat), len(grid_lon)))
+        
+        for seg in range(num_segments):
+            t = (seg + 0.5) / num_segments
+            seg_lat = start_lat + t * (end_lat - start_lat)
+            seg_lon = start_lon + t * (end_lon - start_lon)
+            
+            seg_conc = self.calculate_area_source_concentration_field(
+                center_lat=seg_lat,
+                center_lon=seg_lon,
+                area_length=segment_length,
+                area_width=line_width,
+                area_height=line_height,
+                emission_rate=segment_emission,
+                grid_lat=grid_lat,
+                grid_lon=grid_lon,
+                sigma_z0=sigma_z0,
+                receptor_height=receptor_height
+            )
+            
+            concentration_field += seg_conc
+        
+        return concentration_field
+    
+    def calculate_line_source_receptor_concentration(
+        self,
+        start_lat: float,
+        start_lon: float,
+        end_lat: float,
+        end_lon: float,
+        line_width: float,
+        line_height: float,
+        emission_rate: float,
+        receptor_lat: float,
+        receptor_lon: float,
+        segment_length: float = 10.0,
+        sigma_z0: Optional[float] = None,
+        receptor_height: float = 0.0
+    ) -> float:
+        """
+        计算直线线源对单个受体点的浓度
+        """
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians((start_lat + end_lat) / 2))
+        
+        dx = (end_lon - start_lon) * lon_to_m
+        dy = (end_lat - start_lat) * lat_to_m
+        line_length = np.sqrt(dx**2 + dy**2)
+        
+        num_segments = max(1, int(line_length / segment_length))
+        segment_emission = emission_rate / num_segments
+        
+        if sigma_z0 is None:
+            sigma_z0 = line_height / 2.15 if line_height > 0 else 2.0
+        
+        total_conc = 0.0
+        
+        for seg in range(num_segments):
+            t = (seg + 0.5) / num_segments
+            seg_lat = start_lat + t * (end_lat - start_lat)
+            seg_lon = start_lon + t * (end_lon - start_lon)
+            
+            seg_conc = self.calculate_area_source_receptor_concentration(
+                center_lat=seg_lat,
+                center_lon=seg_lon,
+                area_length=segment_length,
+                area_width=line_width,
+                area_height=line_height,
+                emission_rate=segment_emission,
+                receptor_lat=receptor_lat,
+                receptor_lon=receptor_lon,
+                sigma_z0=sigma_z0,
+                receptor_height=receptor_height
+            )
+            
+            total_conc += seg_conc
+        
+        return total_conc
 
 
 class StabilityClassifier:
