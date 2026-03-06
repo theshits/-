@@ -1232,7 +1232,7 @@
                 }
                 
                 visualizePlume(result);
-                updateContributions(result.contributions, result.receptor_contributions);
+                updateContributions(result.receptor_contributions);
                 document.getElementById('resultCard').style.display = 'block';
                 saveState();
             } catch (e) {
@@ -1425,7 +1425,7 @@
             }
         }
         
-        function updateContributions(contributions, receptorContributions) {
+        function updateContributions(receptorContributions) {
             const container = document.getElementById('contributions');
             
             const formatConc = (val) => {
@@ -1478,25 +1478,6 @@
                     }
                     html += '</div>';
                 }
-                html += '</div>';
-            }
-            
-            if (contributions && contributions.length > 0) {
-                html += '<div>';
-                html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">🏭 总体贡献排名</div>';
-                const maxPct = Math.max(...contributions.map(c => c.percentage || 0));
-                contributions.slice(0, 8).forEach(c => {
-                    const pollutantTags = (c.pollutants || []).map(p => `<span style="font-size:9px;background:var(--primary);color:white;padding:1px 4px;border-radius:3px;margin-left:4px;">${p}</span>`).join('');
-                    html += `
-                        <div class="contribution-item">
-                            <span style="width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${c.source_name}${pollutantTags}</span>
-                            <div class="contribution-bar">
-                                <div class="contribution-fill" style="width:${(c.percentage || 0)/maxPct*100}%"></div>
-                            </div>
-                            <span style="width:50px;text-align:right;font-size:12px;">${(c.percentage || 0).toFixed(1)}%</span>
-                        </div>
-                    `;
-                });
                 html += '</div>';
             }
             

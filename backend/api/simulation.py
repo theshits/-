@@ -179,6 +179,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         velocity=source.velocity,
                         diameter=source.diameter
                     )
+                    if conc < 1e-6:
+                        conc = 0.0
                     p_total += conc
                     p_source_data.append({
                         "source_id": source.id,
@@ -195,12 +197,6 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         
         receptor_contributions[receptor.name] = pollutant_receptor_data
     
-    total_all = sum(c["total_concentration"] for c in source_contributions)
-    for contrib in source_contributions:
-        contrib["percentage"] = (contrib["total_concentration"] / total_all * 100) if total_all > 0 else 0
-    
-    source_contributions.sort(key=lambda x: x["total_concentration"], reverse=True)
-    
     pollutant_conc_dict = {p: c.tolist() for p, c in pollutant_concentrations.items()}
     available_pollutants = list(all_pollutants) if all_pollutants else None
     
@@ -208,7 +204,7 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         concentrations=total_concentration.tolist(),
         grid_lat=grid_lat.tolist(),
         grid_lon=grid_lon.tolist(),
-        contributions=source_contributions,
+        contributions=[],
         receptor_contributions=receptor_contributions,
         pollutant_concentrations=pollutant_conc_dict if pollutant_conc_dict else None,
         available_pollutants=available_pollutants
