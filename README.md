@@ -1,193 +1,147 @@
-# GNN-based NO2 Inversion Model
+# 大气污染扩散模拟系统
 
-基于图神经网络(GNN)的NO2反演模型，利用TROPOMI卫星数据、地面站点数据和气象数据，通过气象传输边构建图结构，实现NO2浓度的反演预测。
+基于高斯烟羽模型的大气污染扩散模拟系统，支持点源、面源、线源和等效面源的扩散计算。
+
+## 功能特性
+
+- **排放源管理**：支持点源、面源、线源、等效面源四种排放源类型
+- **气象条件管理**：支持风向、风速、大气稳定度等气象参数配置
+- **受体点管理**：支持添加多个受体点，并设置高度参数
+- **扩散模拟**：
+  - 单一风向模拟
+  - 全局模拟（支持8/16/32/64风向加权组合）
+- **结果展示**：
+  - 浓度场热力图
+  - 受体点浓度贡献分析
+  - 污染物浓度分布
+
+## 技术架构
+
+- **后端**：FastAPI + SQLAlchemy
+- **前端**：HTML + JavaScript + Leaflet地图
+- **核心算法**：高斯烟羽扩散模型
 
 ## 项目结构
 
 ```
 gnn/
-├── config.py              # 配置文件加载器
-├── config.yaml            # 模型和训练配置
-├── data_processor.py      # TROPOMI数据处理
-├── station_processor.py   # 地面站点和气象站点数据处理
-├── data_integrator.py     # 数据集成和特征提取
-├── graph_builder.py       # 基于气象传输的图构建
-├── gnn_model.py          # GNN模型架构
-├── trainer.py            # 训练和评估模块
-├── main.py               # 主程序入口
-├── prepare_data.py       # 生成示例数据
-└── requirements.txt      # 依赖包列表
+├── backend/               # 后端代码
+│   ├── api/               # API接口
+│   │   ├── sources.py     # 排放源管理
+│   │   ├── receptors.py   # 受体点管理
+│   │   ├── meteorology.py # 气象条件管理
+│   │   ├── simulation.py  # 模拟计算
+│   │   └── map.py         # 地图服务
+│   ├── core/              # 核心算法
+│   │   └── gaussian_plume.py  # 高斯扩散模型
+│   ├── models/            # 数据模型
+│   │   ├── models.py      # 数据库模型
+│   │   └── schemas.py     # Pydantic模型
+│   ├── templates/         # HTML模板
+│   ├── main.py            # 应用入口
+│   ├── database.py        # 数据库配置
+│   └── requirements.txt   # Python依赖
+├── shp/                   # 地图边界数据
+├── start_server.bat       # 启动服务器脚本
+├── stop_server.bat        # 关闭服务器脚本
+└── README.md
 ```
 
-## 核心功能
+## 快速开始
 
-### 1. 数据预处理
-- **TROPOMI数据处理**: 加载NetCDF格式的TROPOMI NO2数据，进行质量筛选和特征提取
-- **地面站点数据处理**: 处理地面NO2观测数据，支持时间重采样
-- **气象站点数据处理**: 处理风速、风向、温度、湿度等气象数据，计算风矢量分量
+### 环境要求
 
-### 2. 数据集成
-- 空间网格化处理
-- 多源数据时空匹配
-- 节点特征和标签生成
+- Python 3.10+
+- pip
 
-### 3. 图构建
-- **K近邻边**: 基于空间距离构建边
-- **气象传输边**: 利用风速风向计算传输权重
-- **时序边**: 构建时间维度上的连接
+### 安装步骤
 
-### 4. GNN模型
-- **WeatherTransportGNN**: 结合GAT和GCN的混合模型
-- **EdgeWeightedGNN**: 基于边权重的图卷积
-- **SpatialTemporalGNN**: 时空图神经网络
-
-## 安装依赖
-
+1. **克隆项目**
 ```bash
+git clone <项目地址>
+cd gnn
+```
+
+2. **安装依赖**
+```bash
+cd backend
 pip install -r requirements.txt
 ```
 
-## 使用方法
+3. **启动服务器**
 
-### 1. 准备数据
-
-#### 使用示例数据
+双击运行 `start_server.bat` 或在终端执行：
 ```bash
-python prepare_data.py
+cd backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-#### 使用自己的数据
-将数据文件放入对应目录:
-- TROPOMI数据: `data/tropomi/` (NetCDF格式)
-- 地面站点数据: `data/ground/` (CSV格式)
-- 气象站点数据: `data/weather/` (CSV格式)
+4. **访问系统**
 
-### 2. 训练模型
+打开浏览器访问：http://localhost:8080
 
-```bash
-python main.py --mode train --config config.yaml --model_path models/best_model.pt
-```
+### 关闭服务器
 
-### 3. 评估模型
+双击运行 `stop_server.bat` 或在运行服务器的终端按 `Ctrl + C`
 
-```bash
-python main.py --mode evaluate --config config.yaml --model_path models/best_model.pt
-```
+## 使用说明
 
-### 4. 预测
+### 1. 排放源管理
 
-```bash
-python main.py --mode predict --config config.yaml --model_path models/best_model.pt
-```
+- 支持新增、编辑、删除排放源
+- 支持批量导入/导出排放源
+- 支持四种排放源类型：
+  - **点源**：烟囱等点状排放源
+  - **面源**：厂房、堆场等面状排放源
+  - **线源**：道路等线状排放源
+  - **等效面源**：已知浓度的监测点，系统自动计算等效排放速率
 
-## 配置说明
+### 2. 气象条件
 
-在`config.yaml`中可以调整以下参数:
+- 设置风向（0-360度）
+- 设置风速（m/s）
+- 选择大气稳定度（A-F）
 
-### 模型配置
-- `model.name`: 模型类型 (WeatherTransportGNN, EdgeWeightedGNN, SpatialTemporalGNN)
-- `model.hidden_dim`: 隐藏层维度
-- `model.num_layers`: 网络层数
-- `model.dropout`: Dropout比例
-- `model.num_heads`: 注意力头数
+### 3. 受体点管理
 
-### 数据配置
-- `data.tropomi_path`: TROPOMI数据路径
-- `data.ground_path`: 地面站点数据路径
-- `data.weather_path`: 气象站点数据路径
-- `data.spatial_resolution`: 空间分辨率(度)
-- `data.time_resolution`: 时间分辨率
+- 添加监测受体点
+- 设置受体点位置和高度
+- 查看各排放源对受体点的浓度贡献
 
-### 图配置
-- `graph.edge_type`: 边类型
-- `graph.k_neighbors`: K近邻数
-- `graph.max_distance`: 最大距离(km)
-- `graph.wind_weight`: 是否使用风权重
-- `graph.temporal_window`: 时间窗口(小时)
+### 4. 扩散模拟
 
-### 训练配置
-- `training.batch_size`: 批次大小
-- `training.learning_rate`: 学习率
-- `training.num_epochs`: 训练轮数
-- `training.early_stopping_patience`: 早停耐心值
-- `training.train_ratio`: 训练集比例
-- `training.val_ratio`: 验证集比例
-- `training.test_ratio`: 测试集比例
+- **单一风向模拟**：选择特定气象条件进行模拟
+- **全局模拟**：设置多个风向风速组合及权重，进行加权模拟
 
-## 数据格式要求
+## 高斯扩散模型
 
-### TROPOMI数据 (NetCDF)
-必须包含以下变量:
-- `latitude`: 纬度
-- `longitude`: 经度
-- `time`: 时间
-- `nitrogendioxide_tropospheric_column` 或 `no2_tropospheric_column`: NO2柱浓度
-- `qa_value`: 质量标识
+系统采用高斯烟羽模型进行污染物扩散计算：
 
-### 地面站点数据 (CSV)
-必须包含以下列:
-- `latitude`: 纬度
-- `longitude`: 经度
-- `time` 或 `datetime`: 时间
-- `no2` 或 `NO2`: NO2浓度
+$$C(x,y,z) = \frac{Q}{2\pi u \sigma_y \sigma_z} \exp\left(-\frac{y^2}{2\sigma_y^2}\right) \left[\exp\left(-\frac{(z-H)^2}{2\sigma_z^2}\right) + \exp\left(-\frac{(z+H)^2}{2\sigma_z^2}\right)\right]$$
 
-### 气象站点数据 (CSV)
-建议包含以下列:
-- `latitude`: 纬度
-- `longitude`: 经度
-- `time` 或 `datetime`: 时间
-- `wind_speed` 或 `ws`: 风速
-- `wind_direction` 或 `wd`: 风向
-- `temperature` 或 `t2m`: 温度
-- `humidity` 或 `rh`: 湿度
-- `pressure` 或 `ps`: 气压
+其中：
+- C：浓度 (μg/m³)
+- Q：排放速率 (g/s)
+- u：风速 (m/s)
+- σy, σz：水平和垂直扩散参数
+- H：有效源高度 (m)
 
-## 模型评估指标
-
-- **RMSE**: 均方根误差
-- **MAE**: 平均绝对误差
-- **R2**: 决定系数
-- **Bias**: 偏差
-
-## 核心算法说明
-
-### 气象传输边权重计算
-
-基于风速和风向计算节点间的传输权重:
+## 依赖说明
 
 ```
-W = wind_speed * max(0, cos(θ)) / distance
+fastapi>=0.104.0      # Web框架
+uvicorn>=0.24.0       # ASGI服务器
+sqlalchemy>=2.0.0     # ORM
+pydantic>=2.0.0       # 数据验证
+numpy>=1.24.0         # 数值计算
+scipy>=1.10.0         # 科学计算
+python-multipart>=0.0.6  # 文件上传
+jinja2>=3.0.0         # 模板引擎
+geopandas>=0.14.0     # 地理数据处理
+pyproj>=3.6.0         # 坐标转换
+shapely>=2.0.0        # 几何操作
 ```
 
-其中:
-- `wind_speed`: 风速
-- `θ`: 风向与节点间连线的夹角
-- `distance`: 节点间距离
+## 许可证
 
-### GNN模型架构
-
-模型结合了图注意力网络(GAT)和图卷积网络(GCN):
-
-1. **输入投影层**: 将原始特征投影到隐藏维度
-2. **GAT层**: 使用注意力机制学习节点间关系
-3. **GCN层**: 使用图卷积聚合邻居信息
-4. **融合层**: 融合GAT和GCN的输出
-5. **输出层**: 预测NO2浓度
-
-## 输出结果
-
-训练完成后会生成:
-- `models/best_model.pt`: 最佳模型权重
-- `predictions/predictions.csv`: 预测结果(包含经纬度、预测值和真实值)
-
-## 注意事项
-
-1. 确保数据文件路径正确
-2. 根据实际数据调整配置参数
-3. 训练前建议先使用示例数据测试流程
-4. 如有GPU，模型会自动使用GPU加速
-
-## 参考文献
-
-- TROPOMI NO2数据产品文档
-- 图神经网络在环境科学中的应用
+MIT License
