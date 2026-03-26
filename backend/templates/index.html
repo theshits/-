@@ -102,6 +102,67 @@
             box-shadow: var(--shadow);
             padding: 16px;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: var(--card);
+            border-radius: 16px;
+            width: 700px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body { padding: 20px; }
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+        }
+        .close-btn:hover { color: var(--text); }
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .select {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+        }
         .card-title {
             font-size: 14px;
             font-weight: 600;
@@ -377,7 +438,11 @@
                         <option value="NOx">NOx</option>
                         <option value="CO">CO</option>
                     </select>
-                    <button class="btn btn-primary" onclick="runSimulation()">▶ 运行模拟</button>
+                    <select id="simulationType" class="select" style="width: 120px;" onchange="toggleSimulationType()">
+                        <option value="single">风向模拟</option>
+                        <option value="global">全局模拟</option>
+                    </select>
+                    <button class="btn btn-primary" id="runBtn" onclick="runSimulation()">▶ 运行模拟</button>
                     <button class="btn btn-secondary" onclick="clearResults()">🗑️ 清除结果</button>
                 </div>
             </header>
@@ -386,6 +451,7 @@
                 <div class="sidebar-panel">
                     <div class="card">
                         <div class="card-title">气象控制</div>
+                        <div id="singleWindControls">
                         <div class="wind-rose">
                             <canvas id="windCanvas"></canvas>
                         </div>
@@ -397,6 +463,25 @@
                             <div class="form-group">
                                 <label class="form-label">风速 (m/s)</label>
                                 <input type="number" id="windSpeed" class="form-input" value="2" min="0.1" max="20" step="0.1">
+                            </div>
+                        </div>
+                        </div>
+                        <div id="globalWindControls" style="display: none;">
+                            <div class="form-group">
+                                <label class="form-label">风向风速组合</label>
+                                <div id="windCombinations" style="max-height: 200px; overflow-y: auto; margin-bottom: 10px;">
+                                </div>
+                                <button class="btn btn-sm btn-default" onclick="addWindCombination()" style="width: 100%;">+ 添加风向风速</button>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">快速添加</label>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <button class="btn btn-sm btn-default" onclick="addPresetWinds('8方向')">8方向</button>
+                                    <button class="btn btn-sm btn-default" onclick="addPresetWinds('16方向')">16方向</button>
+                                    <button class="btn btn-sm btn-default" onclick="addPresetWinds('32方向')">32方向</button>
+                                    <button class="btn btn-sm btn-default" onclick="addPresetWinds('64方向')">64方向</button>
+                                    <button class="btn btn-sm btn-default" onclick="clearWindCombinations()">清空</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -486,14 +571,37 @@
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-title">贡献度排名</div>
-                        <div id="contributions" class="contribution-list" style="max-height: 350px; overflow-y: auto;">
-                            <div class="empty">请运行模拟查看结果</div>
+                        <div class="card-title">
+                            <span>贡献度排名</span>
+                            <button class="btn btn-sm btn-primary" onclick="openReceptorAnalysisModal()" style="margin-left: auto;">受体点分析</button>
                         </div>
                     </div>
                 </div>
             </div>
         </main>
+    </div>
+
+    <div class="modal" id="receptorAnalysisModal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
+            <div class="modal-header">
+                <h3>受体点贡献分析</h3>
+                <button class="close-btn" onclick="closeReceptorAnalysisModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="overflow-y: auto; max-height: calc(80vh - 120px);">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label class="form-label">选择受体点</label>
+                    <select id="receptorSelectForAnalysis" class="select" style="width: 100%;" onchange="loadReceptorAnalysis()">
+                        <option value="">请选择受体点...</option>
+                    </select>
+                </div>
+                <div id="receptorAnalysisContent">
+                    <div class="empty">请选择受体点查看贡献分析</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeReceptorAnalysisModal()">关闭</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -504,7 +612,68 @@
         let shpGeojson = null;
         let overlayLayer = null;
         let lastSimulationResult = null;
+        let lastReceptorContributions = null;
         let customConcRange = null;
+        let windCombinations = [];
+        
+        function toggleSimulationType() {
+            const type = document.getElementById('simulationType').value;
+            document.getElementById('singleWindControls').style.display = type === 'single' ? 'block' : 'none';
+            document.getElementById('globalWindControls').style.display = type === 'global' ? 'block' : 'none';
+        }
+        
+        function addWindCombination(dir = '', speed = '') {
+            const container = document.getElementById('windCombinations');
+            const div = document.createElement('div');
+            div.className = 'wind-combo-item';
+            div.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px; align-items: center;';
+            div.innerHTML = `
+                <input type="number" class="form-input wind-dir-input" value="${dir}" placeholder="风向°" min="0" max="360" style="width: 80px;">
+                <input type="number" class="form-input wind-speed-input" value="${speed}" placeholder="风速" min="0.1" max="20" step="0.1" style="width: 80px;">
+                <input type="number" class="form-input wind-weight-input" value="1" placeholder="权重" min="0" step="0.1" style="width: 60px;">
+                <button class="btn btn-sm btn-danger" onclick="this.parentElement.remove()">×</button>
+            `;
+            container.appendChild(div);
+        }
+        
+        function addPresetWinds(type) {
+            clearWindCombinations();
+            let directions;
+            if (type === '8方向') {
+                directions = [0, 45, 90, 135, 180, 225, 270, 315];
+            } else if (type === '16方向') {
+                directions = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5];
+            } else if (type === '32方向') {
+                directions = [];
+                for (let i = 0; i < 32; i++) {
+                    directions.push(i * 11.25);
+                }
+            } else if (type === '64方向') {
+                directions = [];
+                for (let i = 0; i < 64; i++) {
+                    directions.push(i * 5.625);
+                }
+            }
+            directions.forEach(dir => addWindCombination(dir.toFixed(2), 2));
+        }
+        
+        function clearWindCombinations() {
+            document.getElementById('windCombinations').innerHTML = '';
+        }
+        
+        function getWindCombinations() {
+            const items = document.querySelectorAll('.wind-combo-item');
+            const combinations = [];
+            items.forEach(item => {
+                const dir = parseFloat(item.querySelector('.wind-dir-input').value);
+                const speed = parseFloat(item.querySelector('.wind-speed-input').value);
+                const weight = parseFloat(item.querySelector('.wind-weight-input').value) || 1;
+                if (!isNaN(dir) && !isNaN(speed) && speed > 0) {
+                    combinations.push({ direction: dir, speed: speed, weight: weight });
+                }
+            });
+            return combinations;
+        }
         
         const MARKER_SYMBOLS = {
             factory: '🏭',
@@ -705,9 +874,9 @@
                         const simResult = localStorage.getItem('pollutionSimResult');
                         if (simResult) {
                             lastSimulationResult = JSON.parse(simResult);
+                            lastReceptorContributions = lastSimulationResult.receptor_contributions;
                             visualizePlume(lastSimulationResult);
                             updateLegendGradient(document.getElementById('colorScaleSelect').value);
-                            updateContributions(lastSimulationResult.receptor_contributions);
                             document.getElementById('resultCard').style.display = 'block';
                         }
                     } catch (e) {
@@ -876,7 +1045,7 @@
                 const sourceType = s.source_type || 'point';
                 const symbol = MARKER_SYMBOLS[s.marker_symbol] || '🏭';
                 
-                if (sourceType === 'area') {
+                if (sourceType === 'area' || sourceType === 'equivalent_area') {
                     const areaLength = s.area_length || 100;
                     const areaWidth = s.area_width || 100;
                     const latOffset = areaLength / 111000 / 2;
@@ -895,22 +1064,27 @@
                     });
                     
                     const rectangle = L.polygon(gcj02Corners, {
-                        color: s.marker_color,
-                        fillColor: s.marker_color,
+                        color: sourceType === 'equivalent_area' ? '#9C27B0' : s.marker_color,
+                        fillColor: sourceType === 'equivalent_area' ? '#9C27B0' : s.marker_color,
                         fillOpacity: 0.2,
                         weight: 2,
-                        opacity: 0.8
+                        opacity: 0.8,
+                        dashArray: sourceType === 'equivalent_area' ? '5, 5' : null
                     });
                     
                     let pollutantHtml = '';
                     if (s.pollutants && s.pollutants.length > 0) {
-                        pollutantHtml = s.pollutants.map(p => 
-                            `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`
-                        ).join('');
+                        pollutantHtml = s.pollutants.map(p => {
+                            if (sourceType === 'equivalent_area' && p.concentration) {
+                                return `<span class="pollutant-tag">${p.pollutant_type}: ${p.concentration} μg/m³</span>`;
+                            }
+                            return `<span class="pollutant-tag">${p.pollutant_type}: ${p.emission_rate} g/s</span>`;
+                        }).join('');
                     }
                     
+                    const sourceTypeLabel = sourceType === 'equivalent_area' ? '等效面源（浓度）' : '面源';
                     rectangle.bindPopup(`
-                        <div class="popup-title">${s.name} (面源)</div>
+                        <div class="popup-title">${s.name} (${sourceTypeLabel})</div>
                         <div class="popup-row">
                             <span class="popup-label">尺寸</span>
                             <span>${areaLength} × ${areaWidth} m</span>
@@ -1263,58 +1437,201 @@
                 return;
             }
             
+            const simulationType = document.getElementById('simulationType').value;
+            const pollutantType = document.getElementById('pollutantSelect').value || null;
+            
             localStorage.removeItem('pollutionSimResult');
             lastSimulationResult = null;
             
-            const pollutantType = document.getElementById('pollutantSelect').value || null;
-            
             try {
-                document.getElementById('contributions').innerHTML = '<div class="loading"><div class="spinner"></div>正在模拟...</div>';
+                document.getElementById('runBtn').textContent = '模拟中...';
+                document.getElementById('runBtn').disabled = true;
                 
-                const res = await fetch('/api/simulation/run', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        meteorology_id: parseInt(metId),
-                        pollutant_type: pollutantType,
-                        grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
-                        domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000
-                    })
-                });
-                
-                if (!res.ok) {
-                    let errMsg = '模拟请求失败';
-                    try {
-                        const errData = await res.json();
-                        errMsg = errData.detail || errMsg;
-                    } catch (e) {
-                        errMsg = await res.text() || errMsg;
-                    }
-                    throw new Error(errMsg);
-                }
-                
-                const result = await res.json();
-                lastSimulationResult = result;
-                
-                const pollutantSelect = document.getElementById('displayPollutantSelect');
-                pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
-                if (result.available_pollutants && result.available_pollutants.length > 0) {
-                    result.available_pollutants.forEach(p => {
-                        const option = document.createElement('option');
-                        option.value = p;
-                        option.textContent = p;
-                        pollutantSelect.appendChild(option);
+                if (simulationType === 'single') {
+                    const res = await fetch('/api/simulation/run', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            meteorology_id: parseInt(metId),
+                            pollutant_type: pollutantType,
+                            grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
+                            domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000
+                        })
                     });
+                    
+                    if (!res.ok) {
+                        let errMsg = '模拟请求失败';
+                        try {
+                            const errData = await res.json();
+                            errMsg = errData.detail || errMsg;
+                        } catch (e) {
+                            errMsg = await res.text() || errMsg;
+                        }
+                        throw new Error(errMsg);
+                    }
+                    
+                    const result = await res.json();
+                    lastSimulationResult = result;
+                    lastReceptorContributions = result.receptor_contributions;
+                    
+                    const pollutantSelect = document.getElementById('displayPollutantSelect');
+                    pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
+                    if (result.available_pollutants && result.available_pollutants.length > 0) {
+                        result.available_pollutants.forEach(p => {
+                            const option = document.createElement('option');
+                            option.value = p;
+                            option.textContent = p;
+                            pollutantSelect.appendChild(option);
+                        });
+                    }
+                    
+                    visualizePlume(result);
+                    document.getElementById('resultCard').style.display = 'block';
+                } else {
+                    const windCombos = getWindCombinations();
+                    if (windCombos.length === 0) {
+                        alert('请至少添加一个风向风速组合');
+                        document.getElementById('runBtn').textContent = '运行模拟';
+                        document.getElementById('runBtn').disabled = false;
+                        return;
+                    }
+                    
+                    const totalWeight = windCombos.reduce((sum, w) => sum + w.weight, 0);
+                    let aggregatedConcentrations = null;
+                    let aggregatedPollutantConcentrations = null;
+                    let aggregatedReceptorContributions = {};
+                    let gridLat = null, gridLon = null;
+                    let availablePollutants = [];
+                    
+                    for (let i = 0; i < windCombos.length; i++) {
+                        const combo = windCombos[i];
+                        document.getElementById('runBtn').textContent = `模拟中 (${i+1}/${windCombos.length})...`;
+                        
+                        const res = await fetch('/api/simulation/run_with_wind', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                meteorology_id: parseInt(metId),
+                                pollutant_type: pollutantType,
+                                grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
+                                domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000,
+                                wind_direction: combo.direction,
+                                wind_speed: combo.speed
+                            })
+                        });
+                        
+                        if (!res.ok) {
+                            throw new Error(`风向${combo.direction}°模拟失败`);
+                        }
+                        
+                        const result = await res.json();
+                        const weight = combo.weight / totalWeight;
+                        
+                        if (!aggregatedConcentrations) {
+                            aggregatedConcentrations = result.concentrations.map(row => row.map(v => v * weight));
+                            gridLat = result.grid_lat;
+                            gridLon = result.grid_lon;
+                            availablePollutants = result.available_pollutants || [];
+                            
+                            if (result.pollutant_concentrations) {
+                                aggregatedPollutantConcentrations = {};
+                                for (const [p, conc] of Object.entries(result.pollutant_concentrations)) {
+                                    aggregatedPollutantConcentrations[p] = conc.map(row => row.map(v => v * weight));
+                                }
+                            }
+                        } else {
+                            for (let r = 0; r < result.concentrations.length; r++) {
+                                for (let c = 0; c < result.concentrations[r].length; c++) {
+                                    aggregatedConcentrations[r][c] += result.concentrations[r][c] * weight;
+                                }
+                            }
+                            
+                            if (result.pollutant_concentrations) {
+                                for (const [p, conc] of Object.entries(result.pollutant_concentrations)) {
+                                    if (!aggregatedPollutantConcentrations[p]) {
+                                        aggregatedPollutantConcentrations[p] = conc.map(row => row.map(v => v * weight));
+                                    } else {
+                                        for (let r = 0; r < conc.length; r++) {
+                                            for (let c = 0; c < conc[r].length; c++) {
+                                                aggregatedPollutantConcentrations[p][r][c] += conc[r][c] * weight;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (result.receptor_contributions) {
+                            for (const [receptorName, pollutantData] of Object.entries(result.receptor_contributions)) {
+                                if (!aggregatedReceptorContributions[receptorName]) {
+                                    aggregatedReceptorContributions[receptorName] = {};
+                                }
+                                for (const [pollutant, sources] of Object.entries(pollutantData)) {
+                                    if (!aggregatedReceptorContributions[receptorName][pollutant]) {
+                                        aggregatedReceptorContributions[receptorName][pollutant] = [];
+                                    }
+                                    sources.forEach(s => {
+                                        const existing = aggregatedReceptorContributions[receptorName][pollutant].find(e => e.source_id === s.source_id);
+                                        if (existing) {
+                                            existing.concentration += s.concentration * weight;
+                                        } else {
+                                            aggregatedReceptorContributions[receptorName][pollutant].push({
+                                                ...s,
+                                                concentration: s.concentration * weight
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    for (const receptorName of Object.keys(aggregatedReceptorContributions)) {
+                        for (const pollutant of Object.keys(aggregatedReceptorContributions[receptorName])) {
+                            const sources = aggregatedReceptorContributions[receptorName][pollutant];
+                            const total = sources.reduce((sum, s) => sum + s.concentration, 0);
+                            sources.forEach(s => {
+                                s.percentage = total > 0 ? (s.concentration / total * 100) : 0;
+                            });
+                            sources.sort((a, b) => b.concentration - a.concentration);
+                        }
+                    }
+                    
+                    const finalResult = {
+                        concentrations: aggregatedConcentrations,
+                        grid_lat: gridLat,
+                        grid_lon: gridLon,
+                        receptor_contributions: aggregatedReceptorContributions,
+                        pollutant_concentrations: aggregatedPollutantConcentrations,
+                        available_pollutants: availablePollutants
+                    };
+                    
+                    lastSimulationResult = finalResult;
+                    lastReceptorContributions = aggregatedReceptorContributions;
+                    
+                    const pollutantSelect = document.getElementById('displayPollutantSelect');
+                    pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
+                    if (availablePollutants.length > 0) {
+                        availablePollutants.forEach(p => {
+                            const option = document.createElement('option');
+                            option.value = p;
+                            option.textContent = p;
+                            pollutantSelect.appendChild(option);
+                        });
+                    }
+                    
+                    visualizePlume(finalResult);
+                    document.getElementById('resultCard').style.display = 'block';
                 }
                 
-                visualizePlume(result);
-                updateContributions(result.receptor_contributions);
-                document.getElementById('resultCard').style.display = 'block';
+                document.getElementById('runBtn').textContent = '运行模拟';
+                document.getElementById('runBtn').disabled = false;
                 saveState();
             } catch (e) {
                 console.error('模拟失败:', e);
                 alert('模拟失败: ' + e.message);
-                document.getElementById('contributions').innerHTML = '<div class="empty">模拟失败: ' + e.message + '</div>';
+                document.getElementById('runBtn').textContent = '运行模拟';
+                document.getElementById('runBtn').disabled = false;
             }
         }
         
@@ -1503,8 +1820,47 @@
             }
         }
         
-        function updateContributions(receptorContributions) {
-            const container = document.getElementById('contributions');
+        function openReceptorAnalysisModal() {
+            console.log('openReceptorAnalysisModal called');
+            console.log('lastReceptorContributions:', lastReceptorContributions);
+            
+            if (!lastReceptorContributions || Object.keys(lastReceptorContributions).length === 0) {
+                alert('请先运行模拟获取结果');
+                return;
+            }
+            
+            const select = document.getElementById('receptorSelectForAnalysis');
+            select.innerHTML = '<option value="">请选择受体点...</option>';
+            
+            for (const receptorName of Object.keys(lastReceptorContributions)) {
+                const option = document.createElement('option');
+                option.value = receptorName;
+                option.textContent = receptorName;
+                select.appendChild(option);
+            }
+            
+            document.getElementById('receptorAnalysisContent').innerHTML = '<div class="empty">请选择受体点查看贡献分析</div>';
+            document.getElementById('receptorAnalysisModal').classList.add('show');
+        }
+        
+        function closeReceptorAnalysisModal() {
+            document.getElementById('receptorAnalysisModal').classList.remove('show');
+        }
+        
+        function loadReceptorAnalysis() {
+            const receptorName = document.getElementById('receptorSelectForAnalysis').value;
+            const container = document.getElementById('receptorAnalysisContent');
+            
+            if (!receptorName) {
+                container.innerHTML = '<div class="empty">请选择受体点查看贡献分析</div>';
+                return;
+            }
+            
+            const pollutantData = lastReceptorContributions[receptorName];
+            if (!pollutantData || Object.keys(pollutantData).length === 0) {
+                container.innerHTML = '<div class="empty">该受体点无贡献数据</div>';
+                return;
+            }
             
             const formatConc = (val) => {
                 if (val === 0) return '0';
@@ -1512,55 +1868,54 @@
                 if (absVal >= 1000 || absVal < 0.01) {
                     return val.toExponential(2);
                 } else if (absVal >= 1) {
-                    return val.toFixed(1);
+                    return val.toFixed(4);
                 } else {
-                    return val.toPrecision(2);
+                    return val.toPrecision(4);
                 }
             };
             
             let html = '';
             
-            if (receptorContributions && Object.keys(receptorContributions).length > 0) {
-                html += '<div style="margin-bottom: 16px;">';
-                html += '<div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text);">📍 受体点贡献分析</div>';
+            for (const [pollutant, sources] of Object.entries(pollutantData)) {
+                const filteredSources = sources.filter(s => s.concentration > 0);
                 
-                for (const [receptorName, pollutantData] of Object.entries(receptorContributions)) {
-                    html += `<div style="margin-bottom: 12px; padding: 10px; background: var(--bg); border-radius: 8px;">`;
-                    html += `<div style="font-size: 12px; font-weight: 600; color: var(--primary); margin-bottom: 6px;">${receptorName}</div>`;
-                    
-                    if (pollutantData && Object.keys(pollutantData).length > 0) {
-                        for (const [pollutant, sources] of Object.entries(pollutantData)) {
-                            html += `<div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--border);">`;
-                            html += `<div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 3px;">${pollutant}</div>`;
-                            
-                            if (sources && sources.length > 0) {
-                                const maxConc = Math.max(...sources.map(s => s.concentration || 0));
-                                sources.slice(0, 5).forEach(s => {
-                                    const pct = s.percentage || 0;
-                                    const barWidth = maxConc > 0 ? (s.concentration / maxConc * 100) : 0;
-                                    html += `
-                                        <div class="contribution-item" style="padding: 2px 0;">
-                                            <span style="width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;">${s.source_name}</span>
-                                            <div class="contribution-bar" style="flex:1; margin: 0 6px;">
-                                                <div class="contribution-fill" style="width:${barWidth}%"></div>
-                                            </div>
-                                            <span style="width:70px;text-align:right;font-size:10px;">${pct.toFixed(1)}% | ${formatConc(s.concentration || 0)}</span>
-                                        </div>
-                                    `;
-                                });
-                            }
-                            html += '</div>';
-                        }
-                    } else {
-                        html += '<div style="font-size: 11px; color: var(--text-secondary);">无数据</div>';
-                    }
-                    html += '</div>';
-                }
-                html += '</div>';
+                if (filteredSources.length === 0) continue;
+                
+                filteredSources.sort((a, b) => b.concentration - a.concentration);
+                
+                const totalConc = filteredSources.reduce((sum, s) => sum + s.concentration, 0);
+                
+                html += `
+                    <div style="margin-bottom: 16px; padding: 12px; background: var(--bg); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-size: 14px; font-weight: 600; color: var(--primary);">${pollutant}</span>
+                            <span style="font-size: 12px; color: var(--text-secondary);">总浓度: ${formatConc(totalConc)} μg/m³</span>
+                        </div>
+                        <div style="max-height: 200px; overflow-y: auto;">
+                `;
+                
+                const maxConc = Math.max(...filteredSources.map(s => s.concentration));
+                filteredSources.forEach((s, idx) => {
+                    const pct = totalConc > 0 ? (s.concentration / totalConc * 100) : 0;
+                    const barWidth = maxConc > 0 ? (s.concentration / maxConc * 100) : 0;
+                    html += `
+                        <div style="display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);">
+                            <span style="width: 24px; font-size: 11px; color: var(--text-secondary);">${idx + 1}</span>
+                            <span style="width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;" title="${s.source_name}">${s.source_name}</span>
+                            <div style="flex: 1; height: 8px; background: var(--border); border-radius: 4px; margin: 0 10px; overflow: hidden;">
+                                <div style="width: ${barWidth}%; height: 100%; background: var(--primary); border-radius: 4px;"></div>
+                            </div>
+                            <span style="width: 60px; text-align: right; font-size: 11px; color: var(--text-secondary);">${pct.toFixed(1)}%</span>
+                            <span style="width: 100px; text-align: right; font-size: 11px;">${formatConc(s.concentration)} μg/m³</span>
+                        </div>
+                    `;
+                });
+                
+                html += '</div></div>';
             }
             
             if (!html) {
-                container.innerHTML = '<div class="empty">暂无贡献度数据</div>';
+                container.innerHTML = '<div class="empty">无有效贡献数据</div>';
             } else {
                 container.innerHTML = html;
             }
@@ -1570,9 +1925,9 @@
             if (plumeLayer) map.removeLayer(plumeLayer);
             plumeLayer = null;
             lastSimulationResult = null;
+            lastReceptorContributions = null;
             localStorage.removeItem('pollutionSimResult');
             document.getElementById('resultCard').style.display = 'none';
-            document.getElementById('contributions').innerHTML = '<div class="empty">请运行模拟查看结果</div>';
             saveState();
         }
         

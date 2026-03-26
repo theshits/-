@@ -5,6 +5,7 @@ from datetime import datetime
 class PollutantEmissionBase(BaseModel):
     pollutant_type: str
     emission_rate: float = 0.0
+    concentration: Optional[float] = None
 
 class PollutantEmissionCreate(PollutantEmissionBase):
     pass
@@ -12,6 +13,7 @@ class PollutantEmissionCreate(PollutantEmissionBase):
 class PollutantEmissionUpdate(BaseModel):
     pollutant_type: Optional[str] = None
     emission_rate: Optional[float] = None
+    concentration: Optional[float] = None
 
 class PollutantEmissionResponse(PollutantEmissionBase):
     id: int

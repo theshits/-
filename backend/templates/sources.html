@@ -87,11 +87,42 @@
         .btn-danger { background: var(--error); color: white; }
         .btn-default { background: var(--bg); color: var(--text); }
         .btn-success { background: var(--success); color: white; }
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
         th { font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--bg); }
         td { font-size: 14px; }
         tr:hover td { background: var(--bg); }
+        .col-id { width: 50px; }
+        .col-checkbox { width: 40px; text-align: center; }
+        .col-checkbox input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .col-name { width: 150px; }
+        .col-type { width: 80px; }
+        .col-location { width: 160px; }
+        .col-height { width: 60px; }
+        .col-pollutant { width: 180px; }
+        .col-marker { width: 60px; text-align: center; }
+        .col-status { width: 60px; text-align: center; }
+        .col-action { width: 120px; }
+        .cell-name { 
+            max-width: 150px; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            white-space: nowrap; 
+            cursor: pointer;
+        }
+        .cell-name:hover {
+            white-space: normal;
+            word-break: break-all;
+        }
+        .cell-pollutant {
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .cell-pollutant:hover {
+            overflow: visible;
+            white-space: normal;
+        }
         .badge {
             display: inline-block;
             padding: 4px 10px;
@@ -325,21 +356,32 @@
                     <h1>排放源管理</h1>
                     <p>管理和配置污染排放源信息，支持多种污染物</p>
                 </div>
-                <button class="btn btn-primary" onclick="openModal()">+ 新增排放源</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-default" onclick="openImportModal()">📥 批量导入</button>
+                    <button class="btn btn-primary" onclick="openModal()">+ 新增排放源</button>
+                    <button class="btn btn-secondary" onclick="exportSources()">📤 导出</button>
+                </div>
             </div>
             <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span id="selectedCount" style="color: var(--text-secondary); font-size: 13px;"></span>
+                        <button class="btn btn-danger" id="batchDeleteBtn" onclick="batchDeleteSources()" style="display: none;">🗑️ 批量删除</button>
+                    </div>
+                </div>
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>名称</th>
-                            <th>类型</th>
-                            <th>位置</th>
-                            <th>高度(m)</th>
-                            <th>污染物</th>
-                            <th>标记</th>
-                            <th>状态</th>
-                            <th>操作</th>
+                            <th class="col-checkbox"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>
+                            <th class="col-id">ID</th>
+                            <th class="col-name">名称</th>
+                            <th class="col-type">类型</th>
+                            <th class="col-location">位置</th>
+                            <th class="col-height">高度</th>
+                            <th class="col-pollutant">污染物</th>
+                            <th class="col-marker">标记</th>
+                            <th class="col-status"><label class="toggle-switch" title="全部启用/禁用"><input type="checkbox" onchange="toggleAllSources(this.checked)"><span class="toggle-slider"></span></label></th>
+                            <th class="col-action">操作</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody"></tbody>
@@ -364,7 +406,8 @@
                     <select class="form-input" id="sourceType" onchange="switchSourceType()">
                         <option value="point">点源</option>
                         <option value="area">面源（矩形）</option>
-                        <option value="line">线源（直线）</option>
+                        <option value="equivalent_area">等效面源（浓度）</option>
+                        <option value="line">线源</option>
                     </select>
                 </div>
                 
@@ -511,6 +554,39 @@
         </div>
     </div>
 
+    <div class="modal" id="importModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>批量导入排放源</h3>
+                <button class="close-btn" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择排放源类型 *</label>
+                    <select class="form-input" id="importSourceType" onchange="updateImportButtons()">
+                        <option value="point">点源</option>
+                        <option value="area">面源</option>
+                        <option value="equivalent_area">等效面源（浓度）</option>
+                        <option value="line">线源</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">选择文件</label>
+                    <input type="file" id="importFile" accept=".xlsx,.xls" class="form-input">
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                        支持 .xlsx 格式，请先下载模板填写数据
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeImportModal()">取消</button>
+                <button class="btn btn-default" onclick="downloadTemplate()">📥 下载模板</button>
+                <button class="btn btn-primary" onclick="importSources()">导入</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script>
         let sources = [];
         let pollutantTypes = [];
@@ -520,14 +596,20 @@
         
         function switchSourceType() {
             const type = document.getElementById('sourceType').value;
+            const previousType = currentSourceType;
             currentSourceType = type;
             
             document.getElementById('pointSourceParams').style.display = type === 'point' ? 'block' : 'none';
-            document.getElementById('areaSourceParams').style.display = type === 'area' ? 'block' : 'none';
+            document.getElementById('areaSourceParams').style.display = (type === 'area' || type === 'equivalent_area') ? 'block' : 'none';
             document.getElementById('lineSourceParams').style.display = type === 'line' ? 'block' : 'none';
             
             document.getElementById('centerCoordsRow').style.display = type === 'line' ? 'none' : 'flex';
             document.getElementById('markerRow').style.display = type === 'line' ? 'none' : 'flex';
+            
+            if ((previousType === 'equivalent_area' && type !== 'equivalent_area') || 
+                (previousType !== 'equivalent_area' && type === 'equivalent_area')) {
+                document.getElementById('pollutantList').innerHTML = '';
+            }
         }
         
         async function loadInitData() {
@@ -590,34 +672,51 @@
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = sources.map(s => {
                 const pollutantTags = s.pollutants && s.pollutants.length > 0 
-                    ? s.pollutants.map(p => `<span class="badge ${getPollutantBadgeClass(p.pollutant_type)}">${p.pollutant_type}: ${p.emission_rate} g/s</span>`).join('')
+                    ? s.pollutants.map(p => {
+                        if (s.source_type === 'equivalent_area' && p.concentration) {
+                            return `<span class="badge ${getPollutantBadgeClass(p.pollutant_type)}">${p.pollutant_type}: ${p.concentration} μg/m³</span>`;
+                        }
+                        return `<span class="badge ${getPollutantBadgeClass(p.pollutant_type)}">${p.pollutant_type}: ${p.emission_rate} g/s</span>`;
+                    }).join('')
                     : '<span style="color: var(--text-secondary);">无</span>';
                 
-                const symbol = markerSymbols.find(m => m.symbol === s.marker_symbol) || {icon: '📍'};
+                const symbolInfo = markerSymbols.find(m => m.symbol === s.marker_symbol);
+                const symbol = symbolInfo ? symbolInfo : {icon: '🏭', name: '工厂'};
                 
                 const typeLabels = {
                     'point': '点源',
                     'area': '面源',
+                    'equivalent_area': '等效面源',
                     'line': '线源'
                 };
                 const typeLabel = typeLabels[s.source_type] || '点源';
                 
+                let heightDisplay = '';
+                if (s.source_type === 'point') {
+                    heightDisplay = s.height || 0;
+                } else if (s.source_type === 'area' || s.source_type === 'equivalent_area') {
+                    heightDisplay = s.area_height || 0;
+                } else if (s.source_type === 'line') {
+                    heightDisplay = s.line_height || 0;
+                }
+                
                 return `
                     <tr>
-                        <td>${s.id}</td>
-                        <td>${s.name}</td>
-                        <td><span class="badge badge-default">${typeLabel}</span></td>
-                        <td>${s.latitude.toFixed(4)}, ${s.longitude.toFixed(4)}</td>
-                        <td>${s.height}</td>
-                        <td><div class="pollutant-tags">${pollutantTags}</div></td>
-                        <td><span style="font-size: 20px; color: ${s.marker_color};">${symbol.icon}</span></td>
-                        <td>
+                        <td class="col-checkbox"><input type="checkbox" class="source-checkbox" data-id="${s.id}" onchange="updateSelectedCount()"></td>
+                        <td class="col-id">${s.id}</td>
+                        <td class="col-name"><div class="cell-name" title="${s.name}">${s.name}</div></td>
+                        <td class="col-type"><span class="badge badge-default">${typeLabel}</span></td>
+                        <td class="col-location">${s.latitude.toFixed(4)}, ${s.longitude.toFixed(4)}</td>
+                        <td class="col-height">${heightDisplay}</td>
+                        <td class="col-pollutant"><div class="cell-pollutant">${pollutantTags}</div></td>
+                        <td class="col-marker"><span style="font-size: 20px; color: ${s.marker_color};">${symbol.icon}</span></td>
+                        <td class="col-status">
                             <label class="toggle-switch">
                                 <input type="checkbox" ${s.is_active ? 'checked' : ''} onchange="toggleSourceStatus(${s.id}, ${s.is_active})">
                                 <span class="toggle-slider"></span>
                             </label>
                         </td>
-                        <td class="actions">
+                        <td class="col-action">
                             <button class="btn btn-sm btn-default" onclick="editSource(${s.id})">编辑</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteSource(${s.id})">删除</button>
                         </td>
@@ -626,22 +725,25 @@
             }).join('');
         }
         
-        function addPollutantRow(type = '', rate = 0, unit = 'g/s') {
+        function addPollutantRow(type = '', rate = 0, concentration = null, unit = 'g/s') {
             const list = document.getElementById('pollutantList');
             const row = document.createElement('div');
             row.className = 'pollutant-item';
+            const isEquivalent = currentSourceType === 'equivalent_area';
             row.innerHTML = `
                 <select class="select pollutant-type">
                     <option value="">选择物质...</option>
                     ${pollutantTypes.map(p => `<option value="${p.type}" ${p.type === type ? 'selected' : ''}>${p.name} (${p.description})</option>`).join('')}
                 </select>
-                <input type="number" class="input pollutant-rate" placeholder="排放速率" value="${rate}" step="0.01" style="width: 100px;">
+                <input type="number" class="input pollutant-rate" placeholder="${isEquivalent ? '浓度' : '排放速率'}" value="${isEquivalent ? (concentration || '') : rate}" step="0.01" style="width: 100px;">
+                ${isEquivalent ? '<span style="font-size: 12px; color: var(--text-secondary); margin-left: 4px;">μg/m³</span>' : `
                 <select class="select pollutant-unit" style="width: 90px;">
                     <option value="g/s" ${unit === 'g/s' ? 'selected' : ''}>g/s</option>
                     <option value="kg/h" ${unit === 'kg/h' ? 'selected' : ''}>kg/h</option>
                     <option value="kg/day" ${unit === 'kg/day' ? 'selected' : ''}>kg/day</option>
                     <option value="ton/year" ${unit === 'ton/year' ? 'selected' : ''}>ton/year</option>
                 </select>
+                `}
                 <button class="btn-remove" onclick="this.parentElement.remove()">删除</button>
             `;
             list.appendChild(row);
@@ -720,7 +822,7 @@
             document.getElementById('pollutantList').innerHTML = '';
             if (s.pollutants && s.pollutants.length > 0) {
                 s.pollutants.forEach(p => {
-                    addPollutantRow(p.pollutant_type, p.emission_rate, 'g/s');
+                    addPollutantRow(p.pollutant_type, p.emission_rate, p.concentration, 'g/s');
                 });
             }
             
@@ -742,21 +844,32 @@
                 'ton/year': 1000000 / (365.25 * 24 * 3600)
             };
             
+            const isEquivalent = currentSourceType === 'equivalent_area';
+            
             items.forEach(item => {
                 const type = item.querySelector('.pollutant-type').value;
                 const rate = parseFloat(item.querySelector('.pollutant-rate').value) || 0;
-                const unit = item.querySelector('.pollutant-unit').value;
+                const unitElement = item.querySelector('.pollutant-unit');
+                const unit = unitElement ? unitElement.value : 'g/s';
                 
-                if (type && rate > 0) {
-                    const rateInGramsPerSecond = rate * unitConversions[unit];
-                    pollutants.push({ 
-                        pollutant_type: type, 
-                        emission_rate: rateInGramsPerSecond,
-                        original_rate: rate,
-                        original_unit: unit
-                    });
+                if (type && (rate > 0 || (isEquivalent && !isNaN(rate)))) {
+                    if (isEquivalent) {
+                        pollutants.push({ 
+                            pollutant_type: type, 
+                            emission_rate: 0,
+                            concentration: rate
+                        });
+                    } else {
+                        const rateInGramsPerSecond = rate * unitConversions[unit];
+                        pollutants.push({ 
+                            pollutant_type: type, 
+                            emission_rate: rateInGramsPerSecond,
+                            concentration: null
+                        });
+                    }
                 }
             });
+            
             return pollutants;
         }
         
@@ -839,6 +952,68 @@
             loadSources();
         }
         
+        function toggleSelectAll(checked) {
+            document.querySelectorAll('.source-checkbox').forEach(cb => {
+                cb.checked = checked;
+            });
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            const selected = document.querySelectorAll('.source-checkbox:checked');
+            const count = selected.length;
+            const countSpan = document.getElementById('selectedCount');
+            const deleteBtn = document.getElementById('batchDeleteBtn');
+            
+            if (count > 0) {
+                countSpan.textContent = `已选择 ${count} 项`;
+                deleteBtn.style.display = 'inline-flex';
+            } else {
+                countSpan.textContent = '';
+                deleteBtn.style.display = 'none';
+            }
+            
+            const selectAllCb = document.getElementById('selectAll');
+            const allCb = document.querySelectorAll('.source-checkbox');
+            selectAllCb.checked = count > 0 && count === allCb.length;
+        }
+        
+        async function batchDeleteSources() {
+            const selected = document.querySelectorAll('.source-checkbox:checked');
+            if (selected.length === 0) {
+                alert('请先选择要删除的排放源');
+                return;
+            }
+            
+            if (!confirm(`确定删除选中的 ${selected.length} 个排放源吗？此操作不可撤销。`)) return;
+            
+            const ids = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const id of ids) {
+                try {
+                    const res = await fetch(`/api/sources/${id}`, {method: 'DELETE'});
+                    if (res.ok) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (e) {
+                    failCount++;
+                }
+            }
+            
+            if (failCount > 0) {
+                alert(`删除完成：成功 ${successCount} 个，失败 ${failCount} 个`);
+            } else {
+                alert(`成功删除 ${successCount} 个排放源`);
+            }
+            
+            loadSources();
+        }
+        
         async function toggleSourceStatus(id, currentStatus) {
             const newStatus = !currentStatus;
             await fetch(`/api/sources/${id}`, {
@@ -847,6 +1022,150 @@
                 body: JSON.stringify({ is_active: newStatus })
             });
             loadSources();
+        }
+        
+        async function toggleAllSources(enable) {
+            const promises = sources.map(s => {
+                if (s.is_active !== enable) {
+                    return fetch(`/api/sources/${s.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ is_active: enable })
+                    });
+                }
+                return Promise.resolve();
+            });
+            
+            await Promise.all(promises);
+            loadSources();
+        }
+        
+        function openImportModal() {
+            document.getElementById('importModal').classList.add('show');
+            document.getElementById('importSourceType').value = 'point';
+            document.getElementById('importFile').value = '';
+        }
+        
+        function closeImportModal() {
+            document.getElementById('importModal').classList.remove('show');
+        }
+        
+        async function downloadTemplate() {
+            const sourceType = document.getElementById('importSourceType').value;
+            const response = await fetch(`/api/sources/template/${sourceType}`);
+            if (!response.ok) {
+                alert('下载模板失败');
+                return;
+            }
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${sourceType}_template.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+        
+        async function exportSources() {
+            const selected = document.querySelectorAll('.source-checkbox:checked');
+            
+            if (selected.length === 0) {
+                alert('请先选择要导出的排放源');
+                return;
+            }
+            
+            const ids = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+            const selectedSources = sources.filter(s => ids.includes(s.id));
+            
+            const pollutantTypeNames = pollutantTypes.map(p => p.type);
+            
+            const typeLabels = {
+                'point': '点源',
+                'area': '面源',
+                'equivalent_area': '等效面源',
+                'line': '线源'
+            };
+            
+            const baseHeaders = {
+                'point': ['名称', '纬度', '经度', '高度', '烟气温度(K)', '烟气速度', '烟囱直径'],
+                'area': ['名称', '纬度', '经度', '面源长度', '面源宽度', '面源高度', '烟气温度(K)'],
+                'equivalent_area': ['名称', '纬度', '经度', '面源长度', '面源宽度', '面源高度', '烟气温度(K)'],
+                'line': ['名称', '起点纬度', '起点经度', '终点纬度', '终点经度', '线源宽度', '线源高度', '烟气温度(K)']
+            };
+            
+            const workbook = XLSX.utils.book_new();
+            
+            const groupedSources = {};
+            selectedSources.forEach(s => {
+                if (!groupedSources[s.source_type]) {
+                    groupedSources[s.source_type] = [];
+                }
+                groupedSources[s.source_type].push(s);
+            });
+            
+            for (const sourceType in groupedSources) {
+                const sourcesOfType = groupedSources[sourceType];
+                const headers = baseHeaders[sourceType].concat(pollutantTypeNames).concat(['标记符号', '标记颜色']);
+                
+                const exportData = sourcesOfType.map(s => {
+                    const row = {};
+                    
+                    if (sourceType === 'point') {
+                        row['名称'] = s.name;
+                        row['纬度'] = s.latitude;
+                        row['经度'] = s.longitude;
+                        row['高度'] = s.height;
+                        row['烟气温度(K)'] = s.temperature;
+                        row['烟气速度'] = s.velocity;
+                        row['烟囱直径'] = s.diameter;
+                    } else if (sourceType === 'area' || sourceType === 'equivalent_area') {
+                        row['名称'] = s.name;
+                        row['纬度'] = s.latitude;
+                        row['经度'] = s.longitude;
+                        row['面源长度'] = s.area_length;
+                        row['面源宽度'] = s.area_width;
+                        row['面源高度'] = s.area_height;
+                        row['烟气温度(K)'] = s.area_temperature;
+                    } else if (sourceType === 'line') {
+                        row['名称'] = s.name;
+                        row['起点纬度'] = s.start_lat;
+                        row['起点经度'] = s.start_lon;
+                        row['终点纬度'] = s.end_lat;
+                        row['终点经度'] = s.end_lon;
+                        row['线源宽度'] = s.line_width;
+                        row['线源高度'] = s.line_height;
+                        row['烟气温度(K)'] = s.line_temperature;
+                    }
+                    
+                    pollutantTypeNames.forEach(pt => {
+                        const pollutant = s.pollutants ? s.pollutants.find(p => p.pollutant_type === pt) : null;
+                        if (pollutant) {
+                            if (sourceType === 'equivalent_area' && pollutant.concentration) {
+                                row[pt] = pollutant.concentration;
+                            } else {
+                                row[pt] = pollutant.emission_rate;
+                            }
+                        } else {
+                            row[pt] = '';
+                        }
+                    });
+                    
+                    row['标记符号'] = s.marker_symbol || 'factory';
+                    row['标记颜色'] = s.marker_color || '#FF5722';
+                    
+                    return row;
+                });
+                
+                const worksheet = XLSX.utils.json_to_sheet(exportData, {header: headers});
+                XLSX.utils.book_append_sheet(workbook, worksheet, typeLabels[sourceType]);
+            }
+            
+            const now = new Date();
+            const filename = `排放源导出_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}.xlsx`;
+            
+            XLSX.writeFile(workbook, filename);
         }
         
         document.getElementById('marker_color').addEventListener('input', function(e) {

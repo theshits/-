@@ -53,6 +53,7 @@ class PollutantEmission(Base):
     
     pollutant_type = Column(String(50), nullable=False)
     emission_rate = Column(Float, nullable=False, default=0.0)
+    concentration = Column(Float, nullable=True, default=None)
     
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

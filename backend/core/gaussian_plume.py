@@ -285,7 +285,9 @@ class GaussianPlumeModel:
         grid_lat: np.ndarray,
         grid_lon: np.ndarray,
         sigma_z0: Optional[float] = None,
-        receptor_height: float = 0.0
+        receptor_height: float = 0.0,
+        max_concentration: float = None,
+        is_equivalent: bool = False
     ) -> np.ndarray:
         """
         计算矩形面源浓度场（虚拟点源法）
@@ -301,6 +303,8 @@ class GaussianPlumeModel:
             grid_lon: 网格经度数组
             sigma_z0: 初始垂直扩散参数 (可选, 自动计算)
             receptor_height: 受体高度
+            max_concentration: 最大浓度上限 (用于等效面源)
+            is_equivalent: 是否为等效面源
         
         Returns:
             浓度场 (μg/m³)
@@ -322,6 +326,9 @@ class GaussianPlumeModel:
         
         concentration_field = np.zeros((len(grid_lat), len(grid_lon)))
         
+        half_length = area_length / 2
+        half_width = area_width / 2
+        
         for i, lat in enumerate(grid_lat):
             for j, lon in enumerate(grid_lon):
                 dy_lat = (lat - center_lat) * lat_to_m
@@ -332,20 +339,46 @@ class GaussianPlumeModel:
                 
                 x_eff = x_rotated + x_virtual
                 
-                if x_eff > 0:
-                    sigma_y, sigma_z = self.calculate_sigma(x_eff)
-                    sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
-                    sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
-                    
-                    emission_rate_ug = emission_rate * 1e6
-                    
-                    H = area_height
-                    
-                    term1 = emission_rate_ug / (2 * np.pi * self.wind_speed * sigma_y_eff * sigma_z_eff)
-                    term2 = np.exp(-y_rotated**2 / (2 * sigma_y_eff**2))
-                    term3 = np.exp(-(receptor_height - H)**2 / (2 * sigma_z_eff**2)) + np.exp(-(receptor_height + H)**2 / (2 * sigma_z_eff**2))
-                    
-                    concentration_field[i, j] = term1 * term2 * term3
+                if x_eff <= 0:
+                    concentration_field[i, j] = 0.0
+                    continue
+                
+                in_source = (abs(dx_lon) <= half_length and abs(dy_lat) <= half_width)
+                
+                if is_equivalent and max_concentration is not None and in_source:
+                    height_diff = max(0, receptor_height - area_height)
+                    if height_diff <= 0:
+                        concentration_field[i, j] = max_concentration
+                    else:
+                        sigma_z_fallback = max(area_height, 1.0) * 0.5
+                        vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
+                        concentration_field[i, j] = max_concentration * vertical_ratio
+                    continue
+                
+                sigma_y, sigma_z = self.calculate_sigma(x_eff)
+                sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
+                sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
+                
+                emission_rate_ug = emission_rate * 1e6
+                
+                H = area_height
+                
+                term1 = emission_rate_ug / (2 * np.pi * self.wind_speed * sigma_y_eff * sigma_z_eff)
+                term2 = np.exp(-y_rotated**2 / (2 * sigma_y_eff**2))
+                term3 = np.exp(-(receptor_height - H)**2 / (2 * sigma_z_eff**2)) + np.exp(-(receptor_height + H)**2 / (2 * sigma_z_eff**2))
+                
+                conc = term1 * term2 * term3
+                
+                if is_equivalent and max_concentration is not None and conc > max_concentration:
+                    height_diff = max(0, receptor_height - area_height)
+                    if height_diff > 0:
+                        sigma_z_fallback = max(area_height, 1.0) * 0.5
+                        vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
+                        conc = max_concentration * vertical_ratio
+                    else:
+                        conc = max_concentration
+                
+                concentration_field[i, j] = conc
         
         return concentration_field
     
@@ -360,11 +393,25 @@ class GaussianPlumeModel:
         receptor_lat: float,
         receptor_lon: float,
         sigma_z0: Optional[float] = None,
-        receptor_height: float = 0.0
+        receptor_height: float = 0.0,
+        concentration: float = None,
+        is_equivalent: bool = False
     ) -> float:
         """
         计算矩形面源对单个受体点的浓度
+        
+        对于等效面源，当受体点位于面源内部时，直接返回测量浓度
+        对于等效面源，计算结果不超过测量浓度
         """
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians(center_lat))
+        
+        dy = (receptor_lat - center_lat) * lat_to_m
+        dx = (receptor_lon - center_lon) * lon_to_m
+        
+        half_length = area_length / 2
+        half_width = area_width / 2
+        
         sigma_y0 = area_width / 4.3
         if sigma_z0 is None:
             sigma_z0 = area_height / 2.15 if area_height > 0 else 1.0
@@ -377,19 +424,23 @@ class GaussianPlumeModel:
         
         wind_angle = np.radians(270 - self.wind_direction)
         
-        lat_to_m = 111000
-        lon_to_m = 111000 * np.cos(np.radians(center_lat))
-        
-        dy_lat = (receptor_lat - center_lat) * lat_to_m
-        dx_lon = (receptor_lon - center_lon) * lon_to_m
-        
-        x_rotated = dx_lon * np.cos(wind_angle) + dy_lat * np.sin(wind_angle)
-        y_rotated = -dx_lon * np.sin(wind_angle) + dy_lat * np.cos(wind_angle)
+        x_rotated = dx * np.cos(wind_angle) + dy * np.sin(wind_angle)
+        y_rotated = -dx * np.sin(wind_angle) + dy * np.cos(wind_angle)
         
         x_eff = x_rotated + x_virtual
         
         if x_eff <= 0:
             return 0.0
+        
+        in_source = (abs(dx) <= half_length and abs(dy) <= half_width)
+        
+        if is_equivalent and in_source and concentration is not None:
+            height_diff = max(0, receptor_height - area_height)
+            if height_diff <= 0:
+                return concentration
+            sigma_z_fallback = max(area_height, 1.0) * 0.5
+            vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
+            return concentration * vertical_ratio
         
         sigma_y, sigma_z = self.calculate_sigma(x_eff)
         sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
@@ -403,7 +454,61 @@ class GaussianPlumeModel:
         term2 = np.exp(-y_rotated**2 / (2 * sigma_y_eff**2))
         term3 = np.exp(-(receptor_height - H)**2 / (2 * sigma_z_eff**2)) + np.exp(-(receptor_height + H)**2 / (2 * sigma_z_eff**2))
         
-        return term1 * term2 * term3
+        result = term1 * term2 * term3
+        
+        if is_equivalent and concentration is not None and result > concentration:
+            height_diff = max(0, receptor_height - area_height)
+            if height_diff > 0:
+                sigma_z_fallback = max(area_height, 1.0) * 0.5
+                vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
+                return concentration * vertical_ratio
+            return concentration
+        
+        return result
+    
+    def calculate_concentration_at_height(
+        self,
+        ground_concentration: float,
+        source_height: float,
+        receptor_height: float,
+        distance: float = None,
+        wind_speed: float = None
+    ) -> float:
+        """
+        根据地面/源高度浓度计算不同高度的浓度（考虑垂直扩散）
+        
+        Args:
+            ground_concentration: 地面/源高度处的测量浓度 (μg/m³)
+            source_height: 源高度
+            receptor_height: 受体高度
+            distance: 计算距离，用于估算垂直扩散参数
+            wind_speed: 风速，默认使用模型风速
+        
+        Returns:
+            指定高度的浓度 (μg/m³)
+        """
+        if wind_speed is None:
+            wind_speed = self.wind_speed
+        
+        if receptor_height <= source_height:
+            return ground_concentration
+        
+        if distance is None or distance <= 0:
+            distance = 50.0
+        
+        sigma_z = self.calculate_sigma(distance)[1]
+        
+        if sigma_z <= 0:
+            sigma_z = 1.0
+        
+        H = source_height
+        z = receptor_height
+        
+        vertical_ratio = np.exp(-(z - H)**2 / (2 * sigma_z**2))
+        
+        height_concentration = ground_concentration * vertical_ratio
+        
+        return max(0, height_concentration)
     
     def calculate_line_source_concentration_field(
         self,
@@ -533,6 +638,119 @@ class GaussianPlumeModel:
             total_conc += seg_conc
         
         return total_conc
+    
+    def calculate_emission_rate_from_concentration(
+        self,
+        x: float,
+        y: float,
+        z: float,
+        source_height: float,
+        concentration: float,
+        effective_height: Optional[float] = None
+    ) -> float:
+        """
+        从浓度反推排放速率（高斯烟羽方程的逆运算）
+        
+        高斯烟羽方程:
+        C = Q/(2π·u·σy·σz) · exp[-y²/(2σy²)] · {exp[-(z-H)²/(2σz²)] + exp[-(z+H)²/(2σz²)]}
+        
+        反推排放速率:
+        Q = C · 2π·u·σy·σz / {exp[-y²/(2σy²)] · {exp[-(z-H)²/(2σz²)] + exp[-(z+H)²/(2σz²)]}}
+        
+        Args:
+            x: 下风向距离
+            y: 横风向距离
+            z: 计算点高度
+            source_height: 源高度
+            concentration: 浓度 (μg/m³)
+            effective_height: 有效高度 (可选, 自动计算)
+        
+        Returns:
+            排放速率
+        """
+        if x <= 0:
+            raise ValueError("下风向距离必须大于0")
+        
+        if concentration <= 0:
+            return 0.0
+        
+        sigma_y, sigma_z = self.calculate_sigma(x)
+        
+        if effective_height is None:
+            effective_height = source_height
+        
+        H = effective_height
+        
+        term2 = np.exp(-y**2 / (2 * sigma_y**2))
+        term3 = np.exp(-(z - H)**2 / (2 * sigma_z**2)) + np.exp(-(z + H)**2 / (2 * sigma_z**2))
+        
+        if term2 * term3 < 1e-30:
+            raise ValueError("计算点位置过于偏离烟羽中心，无法准确反推排放速率")
+        
+        emission_rate_ug = concentration * 2 * np.pi * self.wind_speed * sigma_y * sigma_z / (term2 * term3)
+        
+        emission_rate = emission_rate_ug / 1e6
+        
+        return emission_rate
+    
+    def calculate_emission_rate_from_receptor(
+        self,
+        source_lat: float,
+        source_lon: float,
+        source_height: float,
+        receptor_lat: float,
+        receptor_lon: float,
+        concentration: float,
+        receptor_height: float = 0.0,
+        temperature: float = 400.0,
+        velocity: float = 10.0,
+        diameter: float = 1.0
+    ) -> float:
+        """
+        从受体点浓度反推等效排放速率
+        
+        Args:
+            source_lat: 源纬度
+            source_lon: 源经度
+            source_height: 源高度
+            receptor_lat: 受体纬度
+            receptor_lon: 受体经度
+            concentration: 浓度 (μg/m³)
+            receptor_height: 受体高度
+            temperature: 烟气温度 (K)
+            velocity: 烟气出口速度
+            diameter: 烟囱直径
+        
+        Returns:
+            等效排放速率
+        """
+        effective_height = self.calculate_effective_height(
+            source_height, 1.0, temperature, velocity, diameter
+        )
+        
+        wind_angle = np.radians(270 - self.wind_direction)
+        
+        lat_to_m = 111000
+        lon_to_m = 111000 * np.cos(np.radians(source_lat))
+        
+        dy_lat = (receptor_lat - source_lat) * lat_to_m
+        dx_lon = (receptor_lon - source_lon) * lon_to_m
+        
+        x_rotated = dx_lon * np.cos(wind_angle) + dy_lat * np.sin(wind_angle)
+        y_rotated = -dx_lon * np.sin(wind_angle) + dy_lat * np.cos(wind_angle)
+        
+        if x_rotated <= 0:
+            x_rotated = 100.0
+            y_rotated = 0.0
+        
+        return self.calculate_emission_rate_from_concentration(
+            x=x_rotated,
+            y=y_rotated,
+            z=receptor_height,
+            source_height=source_height,
+            concentration=concentration,
+            effective_height=effective_height
+        )
 
 
 class StabilityClassifier:
