@@ -90,15 +90,26 @@
         th { font-size: 12px; font-weight: 600; color: var(--text-secondary); background: var(--bg); }
         td { font-size: 14px; }
         tr:hover td { background: var(--bg); }
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
+        .col-id { width: 50px; }
+        .col-checkbox { width: 40px; text-align: center; }
+        .col-checkbox input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+        .col-name { width: 150px; }
+        .col-location { width: 160px; }
+        .col-height { width: 60px; }
+        .col-marker { width: 60px; text-align: center; }
+        .col-status { width: 60px; text-align: center; }
+        .col-action { width: 120px; }
+        .cell-name { 
+            max-width: 150px; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            white-space: nowrap; 
+            cursor: pointer;
         }
-        .badge-success { background: rgba(52,199,89,0.15); color: var(--success); }
-        .badge-default { background: var(--bg); color: var(--text-secondary); }
+        .cell-name:hover {
+            white-space: normal;
+            word-break: break-all;
+        }
         
         .toggle-switch {
             position: relative;
@@ -250,19 +261,30 @@
                     <h1>受体点管理</h1>
                     <p>管理和配置监测站点/受体点信息</p>
                 </div>
-                <button class="btn btn-primary" onclick="openModal()">+ 新增受体点</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-default" onclick="openImportModal()">📥 批量导入</button>
+                    <button class="btn btn-primary" onclick="openModal()">+ 新增受体点</button>
+                    <button class="btn btn-secondary" onclick="exportReceptors()">📤 导出</button>
+                </div>
             </div>
             <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span id="selectedCount" style="color: var(--text-secondary); font-size: 13px;"></span>
+                        <button class="btn btn-danger" id="batchDeleteBtn" onclick="batchDeleteReceptors()" style="display: none;">🗑️ 批量删除</button>
+                    </div>
+                </div>
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>名称</th>
-                            <th>位置</th>
-                            <th>高度(m)</th>
-                            <th>标记</th>
-                            <th>状态</th>
-                            <th>操作</th>
+                            <th class="col-checkbox"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>
+                            <th class="col-id">ID</th>
+                            <th class="col-name">名称</th>
+                            <th class="col-location">位置</th>
+                            <th class="col-height">高度(m)</th>
+                            <th class="col-marker">标记</th>
+                            <th class="col-status"><label class="toggle-switch" title="全部启用/禁用"><input type="checkbox" onchange="toggleAllReceptors(this.checked)"><span class="toggle-slider"></span></label></th>
+                            <th class="col-action">操作</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody"></tbody>
@@ -313,6 +335,30 @@
         </div>
     </div>
 
+    <div class="modal" id="importModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>批量导入受体点</h3>
+                <button class="close-btn" onclick="closeImportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">选择文件</label>
+                    <input type="file" id="importFile" accept=".xlsx,.xls" class="form-input">
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                        支持 .xlsx 格式，请先下载模板填写数据
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeImportModal()">取消</button>
+                <button class="btn btn-default" onclick="downloadTemplate()">📥 下载模板</button>
+                <button class="btn btn-primary" onclick="importReceptors()">导入</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script>
         let receptors = [];
         let markerSymbols = [];
@@ -370,18 +416,19 @@
                 const symbol = RECEPTOR_SYMBOLS[r.marker_symbol] || RECEPTOR_SYMBOLS['monitor'];
                 return `
                     <tr>
-                        <td>${r.id}</td>
-                        <td>${r.name}</td>
-                        <td>${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}</td>
-                        <td>${r.height}</td>
-                        <td><span style="font-size: 20px; color: ${r.marker_color};">${symbol.icon}</span></td>
-                        <td>
+                        <td class="col-checkbox"><input type="checkbox" class="receptor-checkbox" data-id="${r.id}" onchange="updateSelectedCount()"></td>
+                        <td class="col-id">${r.id}</td>
+                        <td class="col-name"><div class="cell-name" title="${r.name}">${r.name}</div></td>
+                        <td class="col-location">${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}</td>
+                        <td class="col-height">${r.height}</td>
+                        <td class="col-marker"><span style="font-size: 20px; color: ${r.marker_color};">${symbol.icon}</span></td>
+                        <td class="col-status">
                             <label class="toggle-switch">
                                 <input type="checkbox" ${r.is_active ? 'checked' : ''} onchange="toggleReceptorStatus(${r.id}, ${r.is_active})">
                                 <span class="toggle-slider"></span>
                             </label>
                         </td>
-                        <td class="actions">
+                        <td class="col-action">
                             <button class="btn btn-sm btn-default" onclick="editReceptor(${r.id})">编辑</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteReceptor(${r.id})">删除</button>
                         </td>
@@ -482,6 +529,184 @@
         document.getElementById('marker_color').addEventListener('input', function(e) {
             document.getElementById('colorValue').textContent = e.target.value;
         });
+        
+        function openImportModal() {
+            document.getElementById('importModal').classList.add('show');
+            document.getElementById('importFile').value = '';
+        }
+        
+        function closeImportModal() {
+            document.getElementById('importModal').classList.remove('show');
+        }
+        
+        async function downloadTemplate() {
+            const response = await fetch('/api/receptors/template');
+            if (!response.ok) {
+                alert('下载模板失败');
+                return;
+            }
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'receptors_template.xlsx';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+        
+        async function importReceptors() {
+            const fileInput = document.getElementById('importFile');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('请选择要导入的文件');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/receptors/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    let errMsg = '导入失败';
+                    try {
+                        const errData = await response.json();
+                        errMsg = errData.detail || errMsg;
+                    } catch (e) {
+                        errMsg = await response.text() || errMsg;
+                    }
+                    alert(errMsg);
+                    return;
+                }
+                
+                const result = await response.json();
+                alert(`导入成功！共导入 ${result.imported_count || 0} 个受体点`);
+                closeImportModal();
+                loadReceptors();
+            } catch (e) {
+                alert('导入失败: ' + e.message);
+                console.error('导入失败:', e);
+            }
+        }
+        
+        async function exportReceptors() {
+            const selected = document.querySelectorAll('.receptor-checkbox:checked');
+            
+            if (selected.length === 0) {
+                alert('请先选择要导出的受体点');
+                return;
+            }
+            
+            const ids = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+            const selectedReceptors = receptors.filter(r => ids.includes(r.id));
+            
+            const headers = ['名称', '纬度', '经度', '高度', '标记符号', '标记颜色'];
+            
+            const exportData = selectedReceptors.map(r => {
+                const row = {};
+                row['名称'] = r.name;
+                row['纬度'] = r.latitude;
+                row['经度'] = r.longitude;
+                row['高度'] = r.height;
+                row['标记符号'] = r.marker_symbol || 'monitor';
+                row['标记颜色'] = r.marker_color || '#2196F3';
+                return row;
+            });
+            
+            const worksheet = XLSX.utils.json_to_sheet(exportData, {header: headers});
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '受体点');
+            
+            const now = new Date();
+            const filename = `受体点导出_${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}.xlsx`;
+            
+            XLSX.writeFile(workbook, filename);
+        }
+        
+        function toggleSelectAll(checked) {
+            document.querySelectorAll('.receptor-checkbox').forEach(cb => {
+                cb.checked = checked;
+            });
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            const selected = document.querySelectorAll('.receptor-checkbox:checked');
+            const count = selected.length;
+            const countSpan = document.getElementById('selectedCount');
+            const deleteBtn = document.getElementById('batchDeleteBtn');
+            
+            if (count > 0) {
+                countSpan.textContent = `已选择 ${count} 项`;
+                deleteBtn.style.display = 'inline-flex';
+            } else {
+                countSpan.textContent = '';
+                deleteBtn.style.display = 'none';
+            }
+            
+            const selectAllCb = document.getElementById('selectAll');
+            const allCb = document.querySelectorAll('.receptor-checkbox');
+            selectAllCb.checked = count > 0 && count === allCb.length;
+        }
+        
+        async function batchDeleteReceptors() {
+            const selected = document.querySelectorAll('.receptor-checkbox:checked');
+            if (selected.length === 0) {
+                alert('请先选择要删除的受体点');
+                return;
+            }
+            
+            if (!confirm(`确定删除选中的 ${selected.length} 个受体点吗？此操作不可撤销。`)) return;
+            
+            const ids = Array.from(selected).map(cb => parseInt(cb.dataset.id));
+            
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (const id of ids) {
+                try {
+                    const res = await fetch(`/api/receptors/${id}`, {method: 'DELETE'});
+                    if (res.ok) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+                } catch (e) {
+                    failCount++;
+                }
+            }
+            
+            if (failCount > 0) {
+                alert(`删除完成：成功 ${successCount} 个，失败 ${failCount} 个`);
+            } else {
+                alert(`成功删除 ${successCount} 个受体点`);
+            }
+            
+            loadReceptors();
+        }
+        
+        async function toggleAllReceptors(enable) {
+            const promises = receptors.map(r => {
+                if (r.is_active !== enable) {
+                    return fetch(`/api/receptors/${r.id}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ is_active: enable })
+                    });
+                }
+                return Promise.resolve();
+            });
+            
+            await Promise.all(promises);
+            loadReceptors();
+        }
         
         loadInitData();
     </script>

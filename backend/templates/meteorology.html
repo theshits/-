@@ -299,6 +299,16 @@
                         <input type="number" class="form-input" id="humidity" value="50" min="0" max="100">
                     </div>
                 </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">云量 (0-10)</label>
+                        <input type="number" class="form-input" id="cloud_cover" value="0" min="0" max="10" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">降水 (mm/h)</label>
+                        <input type="number" class="form-input" id="precipitation" value="0" min="0" step="0.1">
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-default" onclick="closeModal()">取消</button>
@@ -450,6 +460,8 @@
             document.getElementById('stability_class').value = 'D';
             document.getElementById('temperature').value = 293.15;
             document.getElementById('humidity').value = 50;
+            document.getElementById('cloud_cover').value = 0;
+            document.getElementById('precipitation').value = 0;
             document.getElementById('modal').classList.add('show');
         }
         
@@ -464,6 +476,8 @@
             document.getElementById('stability_class').value = m.stability_class;
             document.getElementById('temperature').value = m.temperature;
             document.getElementById('humidity').value = m.humidity;
+            document.getElementById('cloud_cover').value = m.cloud_cover || 0;
+            document.getElementById('precipitation').value = m.precipitation || 0;
             document.getElementById('modal').classList.add('show');
         }
         
@@ -480,7 +494,9 @@
                 boundary_layer_height: parseFloat(document.getElementById('boundary_layer_height').value),
                 stability_class: document.getElementById('stability_class').value,
                 temperature: parseFloat(document.getElementById('temperature').value),
-                humidity: parseFloat(document.getElementById('humidity').value)
+                humidity: parseFloat(document.getElementById('humidity').value),
+                cloud_cover: parseFloat(document.getElementById('cloud_cover').value),
+                precipitation: parseFloat(document.getElementById('precipitation').value)
             };
             
             try {

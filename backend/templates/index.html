@@ -413,6 +413,13 @@
                     </div>
                     <input type="range" id="gridResolutionSlider" class="apple-slider" min="50" max="500" value="100" step="25" oninput="updateSliderValue('gridResolution')">
                 </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>模拟高度</span>
+                        <span id="simulationHeightValue">0 m</span>
+                    </div>
+                    <input type="range" id="simulationHeightSlider" class="apple-slider" min="0" max="100" value="0" step="1" oninput="updateSliderValue('simulationHeight')">
+                </div>
             </div>
         </aside>
         <main class="main">
@@ -433,10 +440,10 @@
                         <option value="">全部污染物</option>
                         <option value="PM2.5">PM2.5</option>
                         <option value="PM10">PM10</option>
+                        <option value="TSP">TSP</option>
                         <option value="VOCs">VOCs</option>
-                        <option value="SO2">SO2</option>
                         <option value="NOx">NOx</option>
-                        <option value="CO">CO</option>
+                        <option value="O3">O3</option>
                     </select>
                     <select id="simulationType" class="select" style="width: 120px;" onchange="toggleSimulationType()">
                         <option value="single">风向模拟</option>
@@ -809,6 +816,7 @@
                 pollutantType: document.getElementById('pollutantSelect').value,
                 domainSize: document.getElementById('domainSizeSlider').value,
                 gridResolution: document.getElementById('gridResolutionSlider').value,
+                simulationHeight: document.getElementById('simulationHeightSlider').value,
                 hasSimulation: hasSimulation
             };
             
@@ -869,15 +877,37 @@
                     updateSliderValue('gridResolution');
                 }
                 
+                if (state.simulationHeight) {
+                    document.getElementById('simulationHeightSlider').value = state.simulationHeight;
+                    updateSliderValue('simulationHeight');
+                }
+                
                 if (state.hasSimulation) {
                     try {
                         const simResult = localStorage.getItem('pollutionSimResult');
                         if (simResult) {
                             lastSimulationResult = JSON.parse(simResult);
                             lastReceptorContributions = lastSimulationResult.receptor_contributions;
+                            
+                            const pollutantSelect = document.getElementById('displayPollutantSelect');
+                            pollutantSelect.innerHTML = '';
+                            if (lastSimulationResult.available_pollutants && lastSimulationResult.available_pollutants.length > 0) {
+                                lastSimulationResult.available_pollutants.forEach(p => {
+                                    const option = document.createElement('option');
+                                    option.value = p;
+                                    option.textContent = p;
+                                    pollutantSelect.appendChild(option);
+                                });
+                                pollutantSelect.value = lastSimulationResult.available_pollutants[0];
+                            }
+                            
                             visualizePlume(lastSimulationResult);
                             updateLegendGradient(document.getElementById('colorScaleSelect').value);
                             document.getElementById('resultCard').style.display = 'block';
+                            
+                            if (lastSimulationResult.available_pollutants && lastSimulationResult.available_pollutants.length > 0) {
+                                switchDisplayPollutant();
+                            }
                         }
                     } catch (e) {
                         console.warn('Failed to restore simulation result:', e);
@@ -1455,7 +1485,8 @@
                             meteorology_id: parseInt(metId),
                             pollutant_type: pollutantType,
                             grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
-                            domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000
+                            domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000,
+                            receptor_height: parseFloat(document.getElementById('simulationHeightSlider').value)
                         })
                     });
                     
@@ -1475,7 +1506,7 @@
                     lastReceptorContributions = result.receptor_contributions;
                     
                     const pollutantSelect = document.getElementById('displayPollutantSelect');
-                    pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
+                    pollutantSelect.innerHTML = '';
                     if (result.available_pollutants && result.available_pollutants.length > 0) {
                         result.available_pollutants.forEach(p => {
                             const option = document.createElement('option');
@@ -1483,10 +1514,15 @@
                             option.textContent = p;
                             pollutantSelect.appendChild(option);
                         });
+                        pollutantSelect.value = result.available_pollutants[0];
                     }
                     
                     visualizePlume(result);
                     document.getElementById('resultCard').style.display = 'block';
+                    
+                    if (result.available_pollutants && result.available_pollutants.length > 0) {
+                        switchDisplayPollutant();
+                    }
                 } else {
                     const windCombos = getWindCombinations();
                     if (windCombos.length === 0) {
@@ -1516,7 +1552,8 @@
                                 grid_resolution: parseInt(document.getElementById('gridResolutionSlider').value),
                                 domain_size: parseInt(document.getElementById('domainSizeSlider').value) * 1000,
                                 wind_direction: combo.direction,
-                                wind_speed: combo.speed
+                                wind_speed: combo.speed,
+                                receptor_height: parseFloat(document.getElementById('simulationHeightSlider').value)
                             })
                         });
                         
@@ -1610,7 +1647,7 @@
                     lastReceptorContributions = aggregatedReceptorContributions;
                     
                     const pollutantSelect = document.getElementById('displayPollutantSelect');
-                    pollutantSelect.innerHTML = '<option value="">全部污染物</option>';
+                    pollutantSelect.innerHTML = '';
                     if (availablePollutants.length > 0) {
                         availablePollutants.forEach(p => {
                             const option = document.createElement('option');
@@ -1618,10 +1655,15 @@
                             option.textContent = p;
                             pollutantSelect.appendChild(option);
                         });
+                        pollutantSelect.value = availablePollutants[0];
                     }
                     
                     visualizePlume(finalResult);
                     document.getElementById('resultCard').style.display = 'block';
+                    
+                    if (availablePollutants.length > 0) {
+                        switchDisplayPollutant();
+                    }
                 }
                 
                 document.getElementById('runBtn').textContent = '运行模拟';
@@ -1942,7 +1984,21 @@
                 const value = slider.value;
                 document.getElementById('gridResolutionValue').textContent = value + ' m';
                 updateSliderTrack(slider);
+            } else if (type === 'simulationHeight') {
+                const slider = document.getElementById('simulationHeightSlider');
+                const value = slider.value;
+                document.getElementById('simulationHeightValue').textContent = value + ' m';
+                updateSliderTrack(slider);
             }
+        }
+        
+        function initSliders() {
+            const domainSlider = document.getElementById('domainSizeSlider');
+            const gridSlider = document.getElementById('gridResolutionSlider');
+            const heightSlider = document.getElementById('simulationHeightSlider');
+            updateSliderTrack(domainSlider);
+            updateSliderTrack(gridSlider);
+            updateSliderTrack(heightSlider);
         }
         
         function updateSliderTrack(slider) {
@@ -1951,13 +2007,6 @@
             const value = parseFloat(slider.value);
             const percentage = ((value - min) / (max - min)) * 100;
             slider.style.backgroundSize = percentage + '% 100%';
-        }
-        
-        function initSliders() {
-            const domainSlider = document.getElementById('domainSizeSlider');
-            const gridSlider = document.getElementById('gridResolutionSlider');
-            updateSliderTrack(domainSlider);
-            updateSliderTrack(gridSlider);
         }
         
         init();

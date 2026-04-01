@@ -21,6 +21,7 @@ class SimulationWithWindRequest(BaseModel):
     domain_size: float = 5000.0
     wind_direction: float
     wind_speed: float
+    receptor_height: float = 0.0
 
 @router.post("/run", response_model=SimulationResult)
 def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
@@ -52,7 +53,10 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
         wind_direction=meteorology.wind_direction,
         stability_class=meteorology.stability_class,
         temperature=meteorology.temperature,
-        boundary_layer_height=meteorology.boundary_layer_height
+        boundary_layer_height=meteorology.boundary_layer_height,
+        humidity=meteorology.humidity,
+        cloud_cover=meteorology.cloud_cover,
+        precipitation=meteorology.precipitation
     )
     
     all_lats = [s.latitude for s in sources] + [r.latitude for r in receptors]
@@ -105,17 +109,15 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                     if p.pollutant_type == pollutant_type:
                         if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                             try:
-                                equivalent_emission_rate = model.calculate_emission_rate_from_receptor(
-                                    source_lat=source.latitude,
-                                    source_lon=source.longitude,
-                                    source_height=getattr(source, 'area_height', 0) or 0,
-                                    receptor_lat=source.latitude,
-                                    receptor_lon=source.longitude,
+                                area_length = getattr(source, 'area_length', 100) or 100
+                                area_width = getattr(source, 'area_width', 100) or 100
+                                area_height = getattr(source, 'area_height', 0) or 0
+                                
+                                equivalent_emission_rate = model.calculate_equivalent_emission_rate(
                                     concentration=p.concentration,
-                                    receptor_height=0.0,
-                                    temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                    velocity=10.0,
-                                    diameter=1.0
+                                    area_length=area_length,
+                                    area_width=area_width,
+                                    area_height=area_height
                                 )
                                 total_emission_rate += equivalent_emission_rate
                                 source_pollutants.append(p.pollutant_type)
@@ -136,17 +138,15 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                 else:
                     if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                         try:
-                            equivalent_emission_rate = model.calculate_emission_rate_from_receptor(
-                                source_lat=source.latitude,
-                                source_lon=source.longitude,
-                                source_height=getattr(source, 'area_height', 0) or 0,
-                                receptor_lat=source.latitude,
-                                receptor_lon=source.longitude,
+                            area_length = getattr(source, 'area_length', 100) or 100
+                            area_width = getattr(source, 'area_width', 100) or 100
+                            area_height = getattr(source, 'area_height', 0) or 0
+                            
+                            equivalent_emission_rate = model.calculate_equivalent_emission_rate(
                                 concentration=p.concentration,
-                                receptor_height=0.0,
-                                temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                velocity=10.0,
-                                diameter=1.0
+                                area_length=area_length,
+                                area_width=area_width,
+                                area_height=area_height
                             )
                             total_emission_rate += equivalent_emission_rate
                             source_pollutants.append(p.pollutant_type)
@@ -178,7 +178,9 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                 grid_lon=grid_lon,
                 temperature=source.temperature,
                 velocity=source.velocity,
-                diameter=source.diameter
+                diameter=source.diameter,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         elif source_type == 'area':
             area_length = getattr(source, 'area_length', 100) or 100
@@ -195,7 +197,9 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                 emission_rate=total_emission_rate,
                 grid_lat=grid_lat,
                 grid_lon=grid_lon,
-                sigma_z0=sigma_z0_area
+                sigma_z0=sigma_z0_area,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         elif source_type == 'equivalent_area':
             area_length = getattr(source, 'area_length', 100) or 100
@@ -214,19 +218,24 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         if p.concentration is not None:
                             max_conc = p.concentration if max_conc is None else max(max_conc, p.concentration)
             
-            source_conc = model.calculate_area_source_concentration_field(
-                center_lat=source.latitude,
-                center_lon=source.longitude,
-                area_length=area_length,
-                area_width=area_width,
-                area_height=area_height,
-                emission_rate=total_emission_rate,
-                grid_lat=grid_lat,
-                grid_lon=grid_lon,
-                sigma_z0=sigma_z0_area,
-                max_concentration=max_conc,
-                is_equivalent=True
-            )
+            if max_conc is None or max_conc <= 0 or total_emission_rate <= 0:
+                source_conc = np.zeros((len(grid_lat), len(grid_lon)))
+            else:
+                source_conc = model.calculate_area_source_concentration_field(
+                    center_lat=source.latitude,
+                    center_lon=source.longitude,
+                    area_length=area_length,
+                    area_width=area_width,
+                    area_height=area_height,
+                    emission_rate=total_emission_rate,
+                    grid_lat=grid_lat,
+                    grid_lon=grid_lon,
+                    sigma_z0=sigma_z0_area,
+                    max_concentration=max_conc,
+                    is_equivalent=True,
+                    receptor_height=request.receptor_height,
+                    pollutant_type=pollutant_type
+                )
         elif source_type == 'line':
             start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
             start_lon = getattr(source, 'start_lon', source.longitude) or source.longitude
@@ -248,7 +257,9 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                 grid_lat=grid_lat,
                 grid_lon=grid_lon,
                 segment_length=segment_length,
-                sigma_z0=sigma_z0_line
+                sigma_z0=sigma_z0_line,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         else:
             source_conc = model.calculate_concentration_field(
@@ -260,7 +271,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                 grid_lon=grid_lon,
                 temperature=source.temperature,
                 velocity=source.velocity,
-                diameter=source.diameter
+                diameter=source.diameter,
+                receptor_height=request.receptor_height
             )
         
         total_concentration += source_conc
@@ -279,7 +291,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         grid_lon=grid_lon,
                         temperature=source.temperature,
                         velocity=source.velocity,
-                        diameter=source.diameter
+                        diameter=source.diameter,
+                        receptor_height=request.receptor_height
                     )
                 elif source_type == 'area':
                     p_conc = model.calculate_area_source_concentration_field(
@@ -291,7 +304,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         emission_rate=p_rate,
                         grid_lat=grid_lat,
                         grid_lon=grid_lon,
-                        sigma_z0=sigma_z0_area
+                        sigma_z0=sigma_z0_area,
+                        receptor_height=request.receptor_height
                     )
                 elif source_type == 'line':
                     p_conc = model.calculate_line_source_concentration_field(
@@ -305,7 +319,9 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         grid_lat=grid_lat,
                         grid_lon=grid_lon,
                         segment_length=segment_length,
-                        sigma_z0=sigma_z0_line
+                        sigma_z0=sigma_z0_line,
+                        receptor_height=request.receptor_height,
+                        pollutant_type=p_type
                     )
                 else:
                     p_conc = model.calculate_concentration_field(
@@ -317,7 +333,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         grid_lon=grid_lon,
                         temperature=source.temperature,
                         velocity=source.velocity,
-                        diameter=source.diameter
+                        diameter=source.diameter,
+                        receptor_height=request.receptor_height
                     )
                 source_p_conc[p_type] = p_conc
                 if p_type not in pollutant_concentrations:
@@ -355,17 +372,15 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                         if p.pollutant_type == p_type:
                             if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                                 try:
-                                    source_emission_rate = model.calculate_emission_rate_from_receptor(
-                                        source_lat=source.latitude,
-                                        source_lon=source.longitude,
-                                        source_height=getattr(source, 'area_height', 0) or 0,
-                                        receptor_lat=source.latitude,
-                                        receptor_lon=source.longitude,
+                                    area_length = getattr(source, 'area_length', 100) or 100
+                                    area_width = getattr(source, 'area_width', 100) or 100
+                                    area_height = getattr(source, 'area_height', 0) or 0
+                                    
+                                    source_emission_rate = model.calculate_equivalent_emission_rate(
                                         concentration=p.concentration,
-                                        receptor_height=0.0,
-                                        temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                        velocity=10.0,
-                                        diameter=1.0
+                                        area_length=area_length,
+                                        area_width=area_width,
+                                        area_height=area_height
                                     )
                                 except Exception:
                                     source_emission_rate = 0
@@ -386,7 +401,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                             receptor_height=receptor.height,
                             temperature=source.temperature,
                             velocity=source.velocity,
-                            diameter=source.diameter
+                            diameter=source.diameter,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'area':
                         area_length = getattr(source, 'area_length', 100) or 100
@@ -404,7 +420,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                             receptor_lat=receptor.latitude,
                             receptor_lon=receptor.longitude,
                             sigma_z0=sigma_z0_area,
-                            receptor_height=receptor.height
+                            receptor_height=receptor.height,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'line':
                         start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
@@ -427,7 +444,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                             receptor_lat=receptor.latitude,
                             receptor_lon=receptor.longitude,
                             segment_length=segment_length,
-                            sigma_z0=sigma_z0_line
+                            sigma_z0=sigma_z0_line,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'equivalent_area':
                         area_length = getattr(source, 'area_length', 100) or 100
@@ -458,7 +476,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                                 receptor_height=receptor.height,
                                 sigma_z0=sigma_z0_area,
                                 concentration=measured_conc,
-                                is_equivalent=True
+                                is_equivalent=True,
+                                pollutant_type=p_type
                             )
                     else:
                         conc = model.calculate_receptor_concentration(
@@ -471,7 +490,8 @@ def run_simulation(request: SimulationRequest, db: Session = Depends(get_db)):
                             receptor_height=receptor.height,
                             temperature=source.temperature,
                             velocity=source.velocity,
-                            diameter=source.diameter
+                            diameter=source.diameter,
+                            pollutant_type=p_type
                         )
                     
                     if conc < 1e-6:
@@ -535,7 +555,10 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
         wind_direction=request.wind_direction,
         stability_class=meteorology.stability_class,
         temperature=meteorology.temperature,
-        boundary_layer_height=meteorology.boundary_layer_height
+        boundary_layer_height=meteorology.boundary_layer_height,
+        humidity=meteorology.humidity,
+        cloud_cover=meteorology.cloud_cover,
+        precipitation=meteorology.precipitation
     )
     
     center_lat = np.mean([s.latitude for s in sources]) if sources else 39.9
@@ -572,17 +595,15 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                     if p.pollutant_type == pollutant_type:
                         if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                             try:
-                                equivalent_emission_rate = model.calculate_emission_rate_from_receptor(
-                                    source_lat=source.latitude,
-                                    source_lon=source.longitude,
-                                    source_height=getattr(source, 'area_height', 0) or 0,
-                                    receptor_lat=source.latitude,
-                                    receptor_lon=source.longitude,
+                                area_length = getattr(source, 'area_length', 100) or 100
+                                area_width = getattr(source, 'area_width', 100) or 100
+                                area_height = getattr(source, 'area_height', 0) or 0
+                                
+                                equivalent_emission_rate = model.calculate_equivalent_emission_rate(
                                     concentration=p.concentration,
-                                    receptor_height=0.0,
-                                    temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                    velocity=10.0,
-                                    diameter=1.0
+                                    area_length=area_length,
+                                    area_width=area_width,
+                                    area_height=area_height
                                 )
                                 total_emission_rate += equivalent_emission_rate
                                 source_pollutants.append(p.pollutant_type)
@@ -603,17 +624,15 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                 else:
                     if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                         try:
-                            equivalent_emission_rate = model.calculate_emission_rate_from_receptor(
-                                source_lat=source.latitude,
-                                source_lon=source.longitude,
-                                source_height=getattr(source, 'area_height', 0) or 0,
-                                receptor_lat=source.latitude,
-                                receptor_lon=source.longitude,
+                            area_length = getattr(source, 'area_length', 100) or 100
+                            area_width = getattr(source, 'area_width', 100) or 100
+                            area_height = getattr(source, 'area_height', 0) or 0
+                            
+                            equivalent_emission_rate = model.calculate_equivalent_emission_rate(
                                 concentration=p.concentration,
-                                receptor_height=0.0,
-                                temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                velocity=10.0,
-                                diameter=1.0
+                                area_length=area_length,
+                                area_width=area_width,
+                                area_height=area_height
                             )
                             total_emission_rate += equivalent_emission_rate
                             source_pollutants.append(p.pollutant_type)
@@ -645,7 +664,9 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                 grid_lon=grid_lon,
                 temperature=source.temperature,
                 velocity=source.velocity,
-                diameter=source.diameter
+                diameter=source.diameter,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         elif source_type == 'area':
             area_length = getattr(source, 'area_length', 100) or 100
@@ -662,7 +683,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                 emission_rate=total_emission_rate,
                 grid_lat=grid_lat,
                 grid_lon=grid_lon,
-                sigma_z0=sigma_z0_area
+                sigma_z0=sigma_z0_area,
+                receptor_height=request.receptor_height
             )
         elif source_type == 'line':
             start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
@@ -685,7 +707,9 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                 grid_lat=grid_lat,
                 grid_lon=grid_lon,
                 segment_length=segment_length,
-                sigma_z0=sigma_z0_line
+                sigma_z0=sigma_z0_line,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         elif source_type == 'equivalent_area':
             area_length = getattr(source, 'area_length', 100) or 100
@@ -704,19 +728,24 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                         if p.concentration is not None:
                             max_conc = p.concentration if max_conc is None else max(max_conc, p.concentration)
             
-            source_conc = model.calculate_area_source_concentration_field(
-                center_lat=source.latitude,
-                center_lon=source.longitude,
-                area_length=area_length,
-                area_width=area_width,
-                area_height=area_height,
-                emission_rate=total_emission_rate,
-                grid_lat=grid_lat,
-                grid_lon=grid_lon,
-                sigma_z0=sigma_z0_area,
-                max_concentration=max_conc,
-                is_equivalent=True
-            )
+            if max_conc is None or max_conc <= 0 or total_emission_rate <= 0:
+                source_conc = np.zeros((len(grid_lat), len(grid_lon)))
+            else:
+                source_conc = model.calculate_area_source_concentration_field(
+                    center_lat=source.latitude,
+                    center_lon=source.longitude,
+                    area_length=area_length,
+                    area_width=area_width,
+                    area_height=area_height,
+                    emission_rate=total_emission_rate,
+                    grid_lat=grid_lat,
+                    grid_lon=grid_lon,
+                    sigma_z0=sigma_z0_area,
+                    max_concentration=max_conc,
+                    is_equivalent=True,
+                    receptor_height=request.receptor_height,
+                    pollutant_type=pollutant_type
+                )
         else:
             source_conc = model.calculate_concentration_field(
                 source_lat=source.latitude,
@@ -727,7 +756,9 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                 grid_lon=grid_lon,
                 temperature=source.temperature,
                 velocity=source.velocity,
-                diameter=source.diameter
+                diameter=source.diameter,
+                receptor_height=request.receptor_height,
+                pollutant_type=pollutant_type
             )
         
         total_concentration += source_conc
@@ -767,17 +798,15 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                         if p.pollutant_type == p_type:
                             if source_type == 'equivalent_area' and p.concentration is not None and p.concentration > 0:
                                 try:
-                                    source_emission_rate = model.calculate_emission_rate_from_receptor(
-                                        source_lat=source.latitude,
-                                        source_lon=source.longitude,
-                                        source_height=getattr(source, 'area_height', 0) or 0,
-                                        receptor_lat=source.latitude,
-                                        receptor_lon=source.longitude,
+                                    area_length = getattr(source, 'area_length', 100) or 100
+                                    area_width = getattr(source, 'area_width', 100) or 100
+                                    area_height = getattr(source, 'area_height', 0) or 0
+                                    
+                                    source_emission_rate = model.calculate_equivalent_emission_rate(
                                         concentration=p.concentration,
-                                        receptor_height=0.0,
-                                        temperature=getattr(source, 'area_temperature', 300.0) or 300.0,
-                                        velocity=10.0,
-                                        diameter=1.0
+                                        area_length=area_length,
+                                        area_width=area_width,
+                                        area_height=area_height
                                     )
                                 except Exception:
                                     source_emission_rate = 0
@@ -796,7 +825,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                             receptor_height=receptor.height,
                             temperature=source.temperature,
                             velocity=source.velocity,
-                            diameter=source.diameter
+                            diameter=source.diameter,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'area':
                         area_length = getattr(source, 'area_length', 100) or 100
@@ -814,7 +844,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                             receptor_lat=receptor.latitude,
                             receptor_lon=receptor.longitude,
                             sigma_z0=sigma_z0_area,
-                            receptor_height=receptor.height
+                            receptor_height=receptor.height,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'line':
                         start_lat = getattr(source, 'start_lat', source.latitude) or source.latitude
@@ -837,7 +868,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                             receptor_lat=receptor.latitude,
                             receptor_lon=receptor.longitude,
                             segment_length=segment_length,
-                            sigma_z0=sigma_z0_line
+                            sigma_z0=sigma_z0_line,
+                            pollutant_type=p_type
                         )
                     elif source_type == 'equivalent_area':
                         area_length = getattr(source, 'area_length', 100) or 100
@@ -868,7 +900,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                                 receptor_height=receptor.height,
                                 sigma_z0=sigma_z0_area,
                                 concentration=measured_conc,
-                                is_equivalent=True
+                                is_equivalent=True,
+                                pollutant_type=p_type
                             )
                     else:
                         conc = model.calculate_receptor_concentration(
@@ -881,7 +914,8 @@ def run_simulation_with_wind(request: SimulationWithWindRequest, db: Session = D
                             receptor_height=receptor.height,
                             temperature=source.temperature,
                             velocity=source.velocity,
-                            diameter=source.diameter
+                            diameter=source.diameter,
+                            pollutant_type=p_type
                         )
                     
                     if conc < 1e-6:
@@ -975,7 +1009,8 @@ def preview_plume(
         grid_lon=grid_lon,
         temperature=source.temperature,
         velocity=source.velocity,
-        diameter=source.diameter
+        diameter=source.diameter,
+        pollutant_type=pollutant_type
     )
     
     return {

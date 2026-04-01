@@ -660,10 +660,10 @@
             const classes = {
                 'PM2.5': 'badge-pm25',
                 'PM10': 'badge-pm10',
+                'TSP': 'badge-tsp',
                 'VOCs': 'badge-vocs',
-                'SO2': 'badge-so2',
                 'NOx': 'badge-no2',
-                'CO': 'badge-co'
+                'O3': 'badge-o3'
             };
             return classes[type] || 'badge-default';
         }
@@ -1066,6 +1066,47 @@
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+        }
+        
+        async function importSources() {
+            const sourceType = document.getElementById('importSourceType').value;
+            const fileInput = document.getElementById('importFile');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('请选择要导入的文件');
+                return;
+            }
+            
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch(`/api/sources/import/${sourceType}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    let errMsg = '导入失败';
+                    try {
+                        const errData = await response.json();
+                        errMsg = errData.detail || errMsg;
+                    } catch (e) {
+                        errMsg = await response.text() || errMsg;
+                    }
+                    alert(errMsg);
+                    return;
+                }
+                
+                const result = await response.json();
+                alert(`导入成功！共导入 ${result.imported_count || 0} 个排放源`);
+                closeImportModal();
+                loadSources();
+            } catch (e) {
+                alert('导入失败: ' + e.message);
+                console.error('导入失败:', e);
+            }
         }
         
         async function exportSources() {

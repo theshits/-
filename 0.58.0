@@ -1,0 +1,5 @@
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Requirement already satisfied: numba in d:\users\46589\anaconda3\lib\site-packages (0.56.4)
+Requirement already satisfied: setuptools in d:\users\46589\anaconda3\lib\site-packages (from numba) (65.6.3)
+Requirement already satisfied: numpy<1.24,>=1.18 in d:\users\46589\anaconda3\lib\site-packages (from numba) (1.23.5)
+Requirement already satisfied: llvmlite<0.40,>=0.39.0dev0 in d:\users\46589\anaconda3\lib\site-packages (from numba) (0.39.1)

@@ -25,9 +25,13 @@ class GaussianPlumeModel:
         wind_direction: float,
         stability_class: str = 'D',
         temperature: float = 293.15,
-        boundary_layer_height: float = 1000.0
+        boundary_layer_height: float = 1000.0,
+        humidity: float = 50.0,
+        cloud_cover: float = 0.0,
+        precipitation: float = 0.0
     ):
-        """
+        """Lambda = a × precipitation^b + 1e-5  # 背景清除
+Lambda × (1 + 0.1 ×
         初始化高斯烟羽模型
         
         Args:
@@ -36,15 +40,273 @@ class GaussianPlumeModel:
             stability_class: 大气稳定度等级
             temperature: 环境温度 (K)
             boundary_layer_height: 边界层高度
+            humidity: 相对湿度 (%)
+            cloud_cover: 云量 (0-10)
+            precipitation: 降水强度 (mm/h)
         """
         self.wind_speed = max(wind_speed, 0.1)
         self.wind_direction = wind_direction
         self.stability_class = stability_class.upper()
         self.temperature = temperature
         self.boundary_layer_height = boundary_layer_height
+        self.humidity = humidity
+        self.cloud_cover = cloud_cover
+        self.precipitation = precipitation
         
         if self.stability_class not in self.PASQUILL_GIFFORD_PARAMS:
             raise ValueError(f"无效的稳定度等级: {stability_class}")
+    
+    def calculate_gravitational_settling_velocity(self, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算重力沉降速度
+        
+        基于污染物类型返回重力沉降速度
+        
+        Args:
+            pollutant_type: 污染物类型
+        
+        Returns:
+            重力沉降速度
+        """
+        vg_dict = {
+            'PM2.5': 0.0002,
+            'PM10': 0.018,
+            'TSP': 0.05,
+            'VOCs': 0.0,
+            'NOx': 0.0,
+            'SO2': 0.0,
+            'CO': 0.0,
+            'O3': 0.0
+        }
+        
+        return vg_dict.get(pollutant_type, 0.0002)
+    
+    def calculate_effective_mixing_height(self) -> float:
+        """
+        计算有效混合高度
+        
+        基于边界层高度和稳定度计算有效混合高度
+        
+        Returns:
+            有效混合高度
+        """
+        mixing_factors = {
+            'A': 1.0,
+            'B': 0.9,
+            'C': 0.8,
+            'D': 0.6,
+            'E': 0.4,
+            'F': 0.2
+        }
+        
+        mixing_factor = mixing_factors.get(self.stability_class, 0.6)
+        H_eff = self.boundary_layer_height * mixing_factor
+        
+        return H_eff
+    
+    def calculate_dry_deposition_velocity(self, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算干沉降速度（WRF模型思路）
+        
+        使用阻力模型：vd = vg + 1/(Ra + Rb + Rc)
+        
+        Args:
+            pollutant_type: 污染物类型
+        
+        Returns:
+            干沉降速度
+        """
+        kappa = 0.4
+        
+        stability_factors = {
+            'A': 0.5,
+            'B': 0.7,
+            'C': 1.0,
+            'D': 1.5,
+            'E': 2.0,
+            'F': 3.0
+        }
+        
+        stability_factor = stability_factors.get(self.stability_class, 1.5)
+        Ra = stability_factor / (kappa * self.wind_speed + 1e-6)
+        
+        pollutant_params = {
+            'PM2.5': (100, 200),
+            'PM10': (50, 100),
+            'TSP': (30, 80),
+            'VOCs': (200, 800),
+            'NOx': (150, 500),
+            'SO2': (150, 400),
+            'CO': (200, 600),
+            'O3': (150, 600)
+        }
+        
+        Rb, Rc = pollutant_params.get(pollutant_type, (100, 200))
+        
+        vd_turbulent = 1.0 / (Ra + Rb + Rc)
+        
+        vg = self.calculate_gravitational_settling_velocity(pollutant_type)
+        
+        vd = vd_turbulent + vg
+        
+        vd *= (1 + 0.2 * self.humidity / 100)
+        
+        if pollutant_type in ['VOCs', 'NOx', 'SO2']:
+            temp_factor = 1 + 0.01 * (self.temperature - 293.15)
+            vd *= temp_factor
+        
+        return vd
+    
+    def calculate_wet_scavenging_coefficient(self, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算湿沉降清除系数（WRF模型思路）
+        
+        使用scavenging系数：Λ = a * precipitation^b + background_scavenging
+        
+        Args:
+            pollutant_type: 污染物类型
+        
+        Returns:
+            湿沉降清除系数 (1/s)
+        """
+        scavenging_params = {
+            'PM2.5': (1e-5, 0.8),
+            'PM10': (2e-5, 0.8),
+            'TSP': (3e-5, 0.8),
+            'VOCs': (1e-6, 0.7),
+            'NOx': (5e-6, 0.7),
+            'SO2': (8e-6, 0.7),
+            'CO': (1e-7, 0.6),
+            'O3': (5e-6, 0.7)
+        }
+        
+        a, b = scavenging_params.get(pollutant_type, (1e-5, 0.8))
+        
+        Lambda = a * (self.precipitation ** b) if self.precipitation > 0 else 0.0
+        
+        background_scavenging = 1e-5
+        Lambda += background_scavenging
+        
+        cloud_factor = 1 + 0.1 * self.cloud_cover
+        Lambda *= cloud_factor
+        
+        return Lambda
+    
+    def calculate_deposition_coefficient(self, distance: float, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算沉降衰减系数（WRF模型思路）
+        
+        k_total = k_dry + Λ
+        decay = exp(-k_total * distance / wind_speed)
+        
+        Args:
+            distance: 下风向距离
+            pollutant_type: 污染物类型
+        
+        Returns:
+            衰减系数 (0-1)
+        """
+        vd = self.calculate_dry_deposition_velocity(pollutant_type)
+        
+        k_dry = vd / self.boundary_layer_height
+        
+        Lambda = self.calculate_wet_scavenging_coefficient(pollutant_type)
+        
+        k_total = k_dry + Lambda
+        
+        decay_factor = np.exp(-k_total * distance / self.wind_speed)
+        
+        return decay_factor
+    
+    def calculate_chemical_decay(self, distance: float, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算化学转化衰减
+        
+        考虑温度、湿度、云量对化学反应速率的影响
+        不同污染物有不同的基础化学转化速率
+        
+        Args:
+            distance: 下风向距离
+            pollutant_type: 污染物类型
+        
+        Returns:
+            衰减系数 (0-1)
+        """
+        chemical_rates = {
+            'PM2.5': 2e-5,
+            'PM10': 1e-5,
+            'TSP': 5e-6,
+            'VOCs': 3e-4,
+            'NOx': 1.5e-4,
+            'SO2': 8e-5,
+            'CO': 1e-6,
+            'O3': 1e-4
+        }
+        
+        k_base = chemical_rates.get(pollutant_type, 2e-5)
+        
+        temp_factor = np.exp((self.temperature - 298) / 20)
+        
+        humidity_factor = 1 + (self.humidity - 50) / 200
+        
+        cloud_factor = 1 + self.cloud_cover / 50
+        
+        if pollutant_type in ['VOCs', 'NOx', 'O3']:
+            temp_factor *= 1.5
+            humidity_factor *= 1.3
+        
+        k_effective = k_base * temp_factor * humidity_factor * cloud_factor
+        
+        travel_time = distance / self.wind_speed
+        
+        decay_factor = np.exp(-k_effective * travel_time)
+        
+        return decay_factor
+    
+    def calculate_total_decay(self, distance: float, pollutant_type: str = 'PM2.5') -> float:
+        """
+        计算总衰减系数
+        
+        综合沉降衰减和化学转化衰减
+        
+        Args:
+            distance: 下风向距离
+            pollutant_type: 污染物类型 (默认PM2.5)
+        
+        Returns:
+            总衰减系数 (0-1)
+        """
+        deposition_decay = self.calculate_deposition_coefficient(distance, pollutant_type)
+        chemical_decay = self.calculate_chemical_decay(distance, pollutant_type)
+        
+        total_decay = deposition_decay * chemical_decay
+        
+        return total_decay
+    
+    def calculate_max_diffusion_distance(self) -> float:
+        """
+        计算最大扩散距离
+        
+        基于边界层高度和稳定度计算最大有效扩散距离
+        使用Turner公式
+        
+        Returns:
+            最大扩散距离
+        """
+        stability_factors = {
+            'A': 1.5,
+            'B': 1.3,
+            'C': 1.1,
+            'D': 1.0,
+            'E': 0.8,
+            'F': 0.6
+        }
+        
+        factor = stability_factors.get(self.stability_class, 1.0)
+        
+        max_distance = factor * self.boundary_layer_height * 10
+        
+        return max_distance
     
     def calculate_sigma(self, distance: float) -> Tuple[float, float]:
         """
@@ -62,6 +324,9 @@ class GaussianPlumeModel:
         
         sigma_y = params['ay'] * (distance ** params['by'])
         sigma_z = params['az'] * (distance ** params['bz'])
+        
+        sigma_y = max(sigma_y, 1.0)
+        sigma_z = max(sigma_z, 1.0)
         
         sigma_z = min(sigma_z, self.boundary_layer_height * 0.8)
         
@@ -113,7 +378,8 @@ class GaussianPlumeModel:
         z: float,
         source_height: float,
         emission_rate: float,
-        effective_height: Optional[float] = None
+        effective_height: Optional[float] = None,
+        pollutant_type: str = 'PM2.5'
     ) -> float:
         """
         计算单点浓度
@@ -128,11 +394,16 @@ class GaussianPlumeModel:
             source_height: 源高度
             emission_rate: 排放速率
             effective_height: 有效高度 (可选, 自动计算)
+            pollutant_type: 污染物类型 (默认PM2.5)
         
         Returns:
             浓度 (μg/m³)
         """
         if x <= 0:
+            return 0.0
+        
+        max_distance = self.calculate_max_diffusion_distance()
+        if x > max_distance:
             return 0.0
         
         sigma_y, sigma_z = self.calculate_sigma(x)
@@ -152,6 +423,9 @@ class GaussianPlumeModel:
         
         concentration = term1 * term2 * term3
         
+        total_decay = self.calculate_total_decay(x, pollutant_type)
+        concentration = concentration * total_decay
+        
         return concentration
     
     def calculate_concentration_field(
@@ -165,7 +439,8 @@ class GaussianPlumeModel:
         temperature: float = 400.0,
         velocity: float = 10.0,
         diameter: float = 1.0,
-        receptor_height: float = 0.0
+        receptor_height: float = 0.0,
+        pollutant_type: str = 'PM2.5'
     ) -> np.ndarray:
         """
         计算网格浓度场
@@ -181,6 +456,7 @@ class GaussianPlumeModel:
             velocity: 烟气出口速度
             diameter: 烟囱直径
             receptor_height: 受体高度
+            pollutant_type: 污染物类型 (默认PM2.5)
         
         Returns:
             浓度场 (μg/m³)
@@ -196,6 +472,8 @@ class GaussianPlumeModel:
         
         concentration_field = np.zeros((len(grid_lat), len(grid_lon)))
         
+        max_distance = self.calculate_max_diffusion_distance()
+        
         for i, lat in enumerate(grid_lat):
             for j, lon in enumerate(grid_lon):
                 dy_lat = (lat - source_lat) * lat_to_m
@@ -204,7 +482,7 @@ class GaussianPlumeModel:
                 x_rotated = dx_lon * np.cos(wind_angle) + dy_lat * np.sin(wind_angle)
                 y_rotated = -dx_lon * np.sin(wind_angle) + dy_lat * np.cos(wind_angle)
                 
-                if x_rotated > 0:
+                if x_rotated > 0 and x_rotated <= max_distance:
                     concentration_field[i, j] = self.calculate_concentration(
                         x=x_rotated,
                         y=y_rotated,
@@ -227,7 +505,8 @@ class GaussianPlumeModel:
         receptor_height: float = 0.0,
         temperature: float = 400.0,
         velocity: float = 10.0,
-        diameter: float = 1.0
+        diameter: float = 1.0,
+        pollutant_type: str = 'PM2.5'
     ) -> float:
         """
         计算单个受体点的浓度
@@ -243,6 +522,7 @@ class GaussianPlumeModel:
             temperature: 烟气温度 (K)
             velocity: 烟气出口速度
             diameter: 烟囱直径
+            pollutant_type: 污染物类型 (默认PM2.5)
         
         Returns:
             浓度 (μg/m³)
@@ -271,7 +551,8 @@ class GaussianPlumeModel:
             z=receptor_height,
             source_height=source_height,
             emission_rate=emission_rate,
-            effective_height=effective_height
+            effective_height=effective_height,
+            pollutant_type=pollutant_type
         )
     
     def calculate_area_source_concentration_field(
@@ -287,7 +568,8 @@ class GaussianPlumeModel:
         sigma_z0: Optional[float] = None,
         receptor_height: float = 0.0,
         max_concentration: float = None,
-        is_equivalent: bool = False
+        is_equivalent: bool = False,
+        pollutant_type: str = 'PM2.5'
     ) -> np.ndarray:
         """
         计算矩形面源浓度场（虚拟点源法）
@@ -303,11 +585,12 @@ class GaussianPlumeModel:
             grid_lon: 网格经度数组
             sigma_z0: 初始垂直扩散参数 (可选, 自动计算)
             receptor_height: 受体高度
-            max_concentration: 最大浓度上限 (用于等效面源)
+            max_concentration: 等效面源最大浓度 (可选)
             is_equivalent: 是否为等效面源
+            pollutant_type: 污染物类型 (默认PM2.5)
         
         Returns:
-            浓度场 (μg/m³)
+            浓度场数组
         """
         sigma_y0 = area_width / 4.3
         if sigma_z0 is None:
@@ -326,6 +609,8 @@ class GaussianPlumeModel:
         
         concentration_field = np.zeros((len(grid_lat), len(grid_lon)))
         
+        max_distance = self.calculate_max_diffusion_distance()
+        
         half_length = area_length / 2
         half_width = area_width / 2
         
@@ -343,21 +628,15 @@ class GaussianPlumeModel:
                     concentration_field[i, j] = 0.0
                     continue
                 
-                in_source = (abs(dx_lon) <= half_length and abs(dy_lat) <= half_width)
-                
-                if is_equivalent and max_concentration is not None and in_source:
-                    height_diff = max(0, receptor_height - area_height)
-                    if height_diff <= 0:
-                        concentration_field[i, j] = max_concentration
-                    else:
-                        sigma_z_fallback = max(area_height, 1.0) * 0.5
-                        vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
-                        concentration_field[i, j] = max_concentration * vertical_ratio
+                if x_eff > max_distance:
+                    concentration_field[i, j] = 0.0
                     continue
                 
+                in_source = (abs(dx_lon) <= half_length and abs(dy_lat) <= half_width)
+                
                 sigma_y, sigma_z = self.calculate_sigma(x_eff)
-                sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
-                sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
+                sigma_y_eff = np.sqrt(sigma_y**2 + sigma_y0**2)
+                sigma_z_eff = np.sqrt(sigma_z**2 + sigma_z0**2)
                 
                 emission_rate_ug = emission_rate * 1e6
                 
@@ -369,14 +648,11 @@ class GaussianPlumeModel:
                 
                 conc = term1 * term2 * term3
                 
-                if is_equivalent and max_concentration is not None and conc > max_concentration:
-                    height_diff = max(0, receptor_height - area_height)
-                    if height_diff > 0:
-                        sigma_z_fallback = max(area_height, 1.0) * 0.5
-                        vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
-                        conc = max_concentration * vertical_ratio
-                    else:
-                        conc = max_concentration
+                total_decay = self.calculate_total_decay(x_eff, pollutant_type)
+                conc = conc * total_decay
+                
+                if is_equivalent and max_concentration is not None and in_source:
+                    conc = min(conc, max_concentration)
                 
                 concentration_field[i, j] = conc
         
@@ -395,13 +671,17 @@ class GaussianPlumeModel:
         sigma_z0: Optional[float] = None,
         receptor_height: float = 0.0,
         concentration: float = None,
-        is_equivalent: bool = False
+        is_equivalent: bool = False,
+        pollutant_type: str = 'PM2.5'
     ) -> float:
         """
         计算矩形面源对单个受体点的浓度
         
         对于等效面源，当受体点位于面源内部时，直接返回测量浓度
         对于等效面源，计算结果不超过测量浓度
+        
+        Args:
+            pollutant_type: 污染物类型 (默认PM2.5)
         """
         lat_to_m = 111000
         lon_to_m = 111000 * np.cos(np.radians(center_lat))
@@ -434,17 +714,9 @@ class GaussianPlumeModel:
         
         in_source = (abs(dx) <= half_length and abs(dy) <= half_width)
         
-        if is_equivalent and in_source and concentration is not None:
-            height_diff = max(0, receptor_height - area_height)
-            if height_diff <= 0:
-                return concentration
-            sigma_z_fallback = max(area_height, 1.0) * 0.5
-            vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
-            return concentration * vertical_ratio
-        
         sigma_y, sigma_z = self.calculate_sigma(x_eff)
-        sigma_y_eff = np.sqrt(sigma_y**2 - sigma_y0**2) if sigma_y > sigma_y0 else sigma_y
-        sigma_z_eff = np.sqrt(sigma_z**2 - sigma_z0**2) if sigma_z > sigma_z0 else sigma_z
+        sigma_y_eff = np.sqrt(sigma_y**2 + sigma_y0**2)
+        sigma_z_eff = np.sqrt(sigma_z**2 + sigma_z0**2)
         
         emission_rate_ug = emission_rate * 1e6
         
@@ -456,13 +728,11 @@ class GaussianPlumeModel:
         
         result = term1 * term2 * term3
         
-        if is_equivalent and concentration is not None and result > concentration:
-            height_diff = max(0, receptor_height - area_height)
-            if height_diff > 0:
-                sigma_z_fallback = max(area_height, 1.0) * 0.5
-                vertical_ratio = np.exp(-(height_diff**2) / (2 * sigma_z_fallback**2))
-                return concentration * vertical_ratio
-            return concentration
+        total_decay = self.calculate_total_decay(x_eff, pollutant_type)
+        result = result * total_decay
+        
+        if is_equivalent and concentration is not None and in_source:
+            result = min(result, concentration)
         
         return result
     
@@ -523,7 +793,8 @@ class GaussianPlumeModel:
         grid_lon: np.ndarray,
         segment_length: float = 10.0,
         sigma_z0: Optional[float] = None,
-        receptor_height: float = 0.0
+        receptor_height: float = 0.0,
+        pollutant_type: str = 'PM2.5'
     ) -> np.ndarray:
         """
         计算直线线源浓度场（分段点源法）
@@ -541,6 +812,7 @@ class GaussianPlumeModel:
             segment_length: 分段长度
             sigma_z0: 初始垂直扩散参数 (可选, 自动计算)
             receptor_height: 受体高度
+            pollutant_type: 污染物类型 (默认PM2.5)
         
         Returns:
             浓度场 (μg/m³)
@@ -577,7 +849,8 @@ class GaussianPlumeModel:
                 grid_lat=grid_lat,
                 grid_lon=grid_lon,
                 sigma_z0=sigma_z0,
-                receptor_height=receptor_height
+                receptor_height=receptor_height,
+                pollutant_type=pollutant_type
             )
             
             concentration_field += seg_conc
@@ -597,7 +870,8 @@ class GaussianPlumeModel:
         receptor_lon: float,
         segment_length: float = 10.0,
         sigma_z0: Optional[float] = None,
-        receptor_height: float = 0.0
+        receptor_height: float = 0.0,
+        pollutant_type: str = 'PM2.5'
     ) -> float:
         """
         计算直线线源对单个受体点的浓度
@@ -632,7 +906,8 @@ class GaussianPlumeModel:
                 receptor_lat=receptor_lat,
                 receptor_lon=receptor_lon,
                 sigma_z0=sigma_z0,
-                receptor_height=receptor_height
+                receptor_height=receptor_height,
+                pollutant_type=pollutant_type
             )
             
             total_conc += seg_conc
@@ -692,6 +967,33 @@ class GaussianPlumeModel:
         emission_rate = emission_rate_ug / 1e6
         
         return emission_rate
+    
+    def calculate_equivalent_emission_rate(
+        self,
+        concentration: float,
+        area_length: float,
+        area_width: float,
+        area_height: float
+    ) -> float:
+        """
+        计算等效面源的排放速率（经验公式）
+        
+        使用工程经验公式：Q = C × U × H × W
+        
+        Args:
+            concentration: 测量浓度 (μg/m³)
+            area_length: 面源长度
+            area_width: 面源宽度
+            area_height: 面源高度
+        
+        Returns:
+            等效排放速率
+        """
+        concentration_g = concentration / 1e6
+        
+        Q = concentration_g * self.wind_speed * area_height * np.sqrt(area_length * area_width)
+        
+        return Q
     
     def calculate_emission_rate_from_receptor(
         self,

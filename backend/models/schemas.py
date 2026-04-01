@@ -132,6 +132,8 @@ class MeteorologyBase(BaseModel):
     stability_class: str = "D"
     temperature: float = 293.15
     humidity: float = 50.0
+    cloud_cover: float = 0.0
+    precipitation: float = 0.0
     record_time: Optional[datetime] = None
 
 class MeteorologyCreate(MeteorologyBase):
@@ -145,6 +147,8 @@ class MeteorologyUpdate(BaseModel):
     stability_class: Optional[str] = None
     temperature: Optional[float] = None
     humidity: Optional[float] = None
+    cloud_cover: Optional[float] = None
+    precipitation: Optional[float] = None
     record_time: Optional[datetime] = None
 
 class MeteorologyResponse(MeteorologyBase):
@@ -184,6 +188,7 @@ class SimulationRequest(BaseModel):
     pollutant_type: Optional[str] = None
     grid_resolution: float = 100.0
     domain_size: float = 10000.0
+    receptor_height: float = 0.0
 
 class ContributionResult(BaseModel):
     source_id: int

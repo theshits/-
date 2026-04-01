@@ -63,10 +63,10 @@ class PollutantEmission(Base):
 POLLUTANT_TYPES = {
     'PM2.5': {'name': 'PM2.5', 'unit': 'g/s', 'description': '细颗粒物'},
     'PM10': {'name': 'PM10', 'unit': 'g/s', 'description': '可吸入颗粒物'},
+    'TSP': {'name': 'TSP', 'unit': 'g/s', 'description': '总悬浮颗粒物'},
     'VOCs': {'name': 'VOCs', 'unit': 'g/s', 'description': '挥发性有机物'},
-    'SO2': {'name': 'SO2', 'unit': 'g/s', 'description': '二氧化硫'},
     'NOx': {'name': 'NOx', 'unit': 'g/s', 'description': '氮氧化物'},
-    'CO': {'name': 'CO', 'unit': 'g/s', 'description': '一氧化碳'},
+    'O3': {'name': 'O3', 'unit': 'g/s', 'description': '臭氧'},
 }
 
 MARKER_SYMBOLS = {
@@ -114,6 +114,8 @@ class Meteorology(Base):
     
     temperature = Column(Float, default=293.15)
     humidity = Column(Float, default=50.0)
+    cloud_cover = Column(Float, default=0.0)
+    precipitation = Column(Float, default=0.0)
     
     record_time = Column(DateTime, server_default=func.now())
     created_at = Column(DateTime, server_default=func.now())
